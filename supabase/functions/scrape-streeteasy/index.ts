@@ -908,36 +908,6 @@ MERGE STRATEGY - SMART VALIDATION:
 
 CRITICAL: Do not add amenities based on assumptions or inferences. Only include what is explicitly stated.`;
 
-Key patterns to look for:
-- Construction year: "1923 built", "built 1925", "built in 1930"  
-- Price: "$1,450,000" format
-- Monthly fees: maintenance + taxes combined
-- Floors: "9-story", "15 floors", "story building"
-- Amenities specific patterns:
-  * Doorman: "doorman", "24-hour doorman", "full-time doorman"
-  * Elevator: "elevator", "elevators", "lift"
-  * Gym: "gym", "fitness", "fitness center", "workout room"
-  * Pool: "pool", "swimming pool", "lap pool"
-  * Rooftop/Garden: "rooftop", "roof deck", "garden", "shared outdoor space", "outdoor space", "terrace"
-  * Laundry: "laundry", "laundry room", "washer/dryer"
-  * Storage: "storage", "storage room", "storage space"
-  * Bike Room: "bike room", "bicycle storage", "bike storage"
-  * Playground: "playground", "children play", "kids play area"
-  * Live-In Super: "live-in super", "resident manager", "super on site"
-  * Parking: "parking", "garage", "parking space"
-- Luxury indicators: "luxury", "premium", "high-end", "white glove"
-
-Address base: "${address}"
-Apartment: "${aptNumber}"
-
-UNIT PAGE HTML (contains apartment-specific details):
-${cleanUnitHtml}
-
-BUILDING PAGE HTML (contains comprehensive building amenities):
-${cleanBuildingHtml}
-
-Return ONLY the JSON object, no other text:`;
-
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
