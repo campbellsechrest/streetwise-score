@@ -16,7 +16,7 @@ const AMENITIES_OPTIONS = [
 const HOME_FEATURES_OPTIONS = [
   'Fireplace', 'Private outdoor space', 'Washer/dryer', 'Dishwasher', 'Central air', 
   'Furnished', 'Loft', 'High ceilings', 'Exposed brick', 'Hardwood floors',
-  'Updated kitchen', 'Updated bathroom', 'Walk-in closet', 'Home office', 'Bay windows'
+  'Updated kitchen', 'Updated bathroom', 'Home office', 'Bay windows'
 ];
 
 const SCHOOL_DISTRICTS = [
