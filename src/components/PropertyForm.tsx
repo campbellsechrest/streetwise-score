@@ -185,39 +185,28 @@ export function PropertyForm({ onSubmit, isLoading }: PropertyFormProps) {
             
             <div>
               <Label htmlFor="bedrooms">Bedrooms</Label>
-              <Select 
-                value={formData.bedrooms?.toString() || ''} 
-                onValueChange={(value) => setFormData(prev => ({ ...prev, bedrooms: Number(value) }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1">1</SelectItem>
-                  <SelectItem value="2">2</SelectItem>
-                  <SelectItem value="3">3</SelectItem>
-                  <SelectItem value="4">4+</SelectItem>
-                </SelectContent>
-              </Select>
+              <Input
+                id="bedrooms"
+                type="number"
+                min="0"
+                step="1"
+                placeholder="3"
+                value={formData.bedrooms || ''}
+                onChange={(e) => setFormData(prev => ({ ...prev, bedrooms: isNaN(Number(e.target.value)) ? 0 : Number(e.target.value) }))}
+              />
             </div>
             
             <div>
               <Label htmlFor="bathrooms">Bathrooms</Label>
-              <Select 
-                value={formData.bathrooms?.toString() || ''} 
-                onValueChange={(value) => setFormData(prev => ({ ...prev, bathrooms: Number(value) }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1">1</SelectItem>
-                  <SelectItem value="1.5">1.5</SelectItem>
-                  <SelectItem value="2">2</SelectItem>
-                  <SelectItem value="2.5">2.5</SelectItem>
-                  <SelectItem value="3">3+</SelectItem>
-                </SelectContent>
-              </Select>
+              <Input
+                id="bathrooms"
+                type="number"
+                min="0"
+                step="0.5"
+                placeholder="2"
+                value={formData.bathrooms || ''}
+                onChange={(e) => setFormData(prev => ({ ...prev, bathrooms: isNaN(Number(e.target.value)) ? 0 : Number(e.target.value) }))}
+              />
             </div>
             
             <div>

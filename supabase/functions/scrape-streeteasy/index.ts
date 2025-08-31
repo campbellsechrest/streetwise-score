@@ -151,12 +151,32 @@ async function extractPropertyData(html: string, url: string): Promise<PropertyD
   const jsonLdData = extractJSONLD(html);
   console.log('JSON-LD data found:', jsonLdData);
 
-  // Extract floor from apartment number
+  // Extract floor from apartment number - improved with penthouse handling
   let floor = 1;
   if (aptNumber) {
-    const floorMatch = aptNumber.match(/^(\d+)/);
-    if (floorMatch) {
-      floor = parseInt(floorMatch[1]);
+    console.log(`Extracting floor for apartment: ${aptNumber}`);
+    
+    // Check for penthouse units first
+    if (/^ph/i.test(aptNumber)) {
+      // For penthouse, use a high floor number or total floors if available
+      const totalFloorsFromExtraction = await extractTotalFloors(html, address, url);
+      if (totalFloorsFromExtraction > 0) {
+        floor = totalFloorsFromExtraction;
+        console.log(`Penthouse unit detected, setting floor to top floor: ${floor}`);
+      } else {
+        floor = 30; // Default high floor for penthouse if we can't get total floors
+        console.log(`Penthouse unit detected, using default high floor: ${floor}`);
+      }
+    } else {
+      // Regular floor extraction from apartment number
+      const floorMatch = aptNumber.match(/^(\d+)/);
+      if (floorMatch) {
+        const extracted = parseInt(floorMatch[1]);
+        if (extracted > 0 && extracted < 200) { // Reasonable floor range
+          floor = extracted;
+          console.log(`Extracted floor from apartment number ${aptNumber}: ${floor}`);
+        }
+      }
     }
   }
 
@@ -344,11 +364,31 @@ async function extractPropertyData(html: string, url: string): Promise<PropertyD
   // Extract days on market from listing page
   daysOnMarket = extractDaysOnMarket(html);
 
-  // Extract square footage (leave blank if not listed)
+  // Extract square footage - improved patterns with context filtering
   let squareFeet = 0; // Default to 0 if not found
-  const sqftMatch = html.match(/(\d+)\s*(?:sq\.?\s*ft\.?|ft²|square feet)/i);
-  if (sqftMatch) {
-    squareFeet = parseInt(sqftMatch[1]);
+  const sqftPatterns = [
+    // Look for square footage in specific contexts, avoiding small numbers
+    /(?:apartment|unit|home|property|listing)[\s\S]{0,200}?(\d{3,4}(?:,\d+)*)\s*(?:sq\.?\s*ft\.?|ft²|square feet)/i,
+    /(\d{3,4}(?:,\d+)*)\s*(?:sq\.?\s*ft\.?|ft²|square feet)[\s\S]{0,50}?(?:apartment|unit|home|property)/i,
+    // More specific StreetEasy patterns
+    /gross square feet[:\s]*(\d{3,4}(?:,\d+)*)/i,
+    /interior square feet[:\s]*(\d{3,4}(?:,\d+)*)/i,
+    // General patterns but with minimum size filtering
+    /(\d{3,4}(?:,\d+)*)\s*(?:sq\.?\s*ft\.?|ft²|square feet)/i,
+  ];
+
+  for (const pattern of sqftPatterns) {
+    const matches = html.matchAll(new RegExp(pattern.source, pattern.flags + 'g'));
+    for (const match of matches) {
+      const size = parseInt(match[1].replace(/,/g, ''));
+      // Filter out obviously wrong sizes (too small for apartments or too big)
+      if (size >= 300 && size <= 10000) {
+        squareFeet = size;
+        console.log(`Found square feet using pattern ${pattern}: ${squareFeet}`);
+        break;
+      }
+    }
+    if (squareFeet > 0) break;
   }
 
   // Extract amenities
