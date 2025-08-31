@@ -551,7 +551,7 @@ async function extractWithOpenAI(html: string, address: string, aptNumber: strin
     
     console.log(`Cleaned HTML length: ${cleanHtml.length} characters`);
 
-    const prompt = `Extract property data from this StreetEasy listing HTML. Return a valid JSON object with these exact fields:
+    const prompt = `Extract property data from this StreetEasy listing HTML. Pay special attention to finding DAYS ON MARKET information. Return a valid JSON object with these exact fields:
 
 {
   "address": "full address including apartment number",
@@ -565,12 +565,24 @@ async function extractWithOpenAI(html: string, address: string, aptNumber: strin
   "schoolDistrict": "string (District 1, 2, 3, or Other based on NYC location)",
   "buildingAge": number (current year minus construction year),
   "buildingType": "string (must be one of: prewar, postwar, modern, luxury, historic, other)",
-  "daysOnMarket": number (days the listing has been active, 0 if not found),
+  "daysOnMarket": number (CRITICAL: carefully search for days the listing has been active),
   "amenities": ["array of amenities like Doorman, Gym, Pool, etc."],
   "walkScore": number (estimate 60-95 based on NYC location),
   "transitScore": number (estimate 60-95 based on subway access),
   "bikeScore": number (estimate 60-90 based on bike infrastructure)
 }
+
+CRITICAL - Days on Market Search Patterns:
+Look carefully for any of these patterns in the HTML:
+- "X days on market", "X days on the market"
+- "Listed X days ago", "Added X days ago"
+- "X days since listed", "X days on site"
+- "Market time: X days", "Days on StreetEasy: X"
+- "New listing" (set to 1 day)
+- "Just listed" (set to 1 day)
+- Any listing date like "Listed on March 15, 2024" (calculate days from today)
+- Data attributes like data-days-on-market="X" or similar
+- JSON-LD structured data with datePosted or datePublished
 
 Building Type Classification Rules:
 - "prewar": Buildings constructed before 1945 (often brick, classic architecture)
@@ -582,7 +594,6 @@ Building Type Classification Rules:
 
 Key patterns to look for:
 - Construction year: "1923 built", "built 1925", "built in 1930"
-- Days on market: "X days on market", "listed X days ago", "X days on site"
 - Price: "$1,450,000" format
 - Monthly fees: maintenance + taxes combined
 - Floors: "9-story", "15 floors", "story building"
@@ -1081,30 +1092,117 @@ async function extractBuildingType(html: string, address: string, url: string): 
 }
 
 function extractDaysOnMarket(html: string): number {
-  console.log('Extracting days on market from listing page...');
+  console.log('=== EXTRACTING DAYS ON MARKET ===');
+  console.log('HTML sample (looking for days on market):', html.slice(0, 2000));
   
-  // Common patterns for days on market on StreetEasy
+  // StreetEasy-specific patterns for days on market
   const daysOnMarketPatterns = [
+    // Direct "X days on market" patterns
     /(\d+)\s*days?\s*on\s*(?:the\s*)?market/i,
     /on\s*(?:the\s*)?market\s*(?:for\s*)?(\d+)\s*days?/i,
-    /listed\s*(?:for\s*)?(\d+)\s*days?/i,
-    /(\d+)\s*days?\s*listed/i,
-    /days?\s*on\s*site[:\s]*(\d+)/i,
+    
+    // Listed/Added patterns
+    /listed\s*(?:for\s*)?(\d+)\s*days?\s*ago/i,
+    /added\s*(\d+)\s*days?\s*ago/i,
+    /(\d+)\s*days?\s*(?:since\s*)?(?:listed|added)/i,
+    
+    // StreetEasy specific classes and attributes
+    /data-days-on-market["\s]*[:=]["\s]*(\d+)/i,
+    /days[_-]on[_-]market["\s]*[:=]["\s]*(\d+)/i,
+    /market[_-]days["\s]*[:=]["\s]*(\d+)/i,
+    
+    // Time-based patterns
+    /(\d+)\s*days?\s*on\s*site/i,
+    /days?\s*on\s*streeteasy[:\s]*(\d+)/i,
     /market\s*time[:\s]*(\d+)\s*days?/i,
-    /(\d+)\s*days?\s*since\s*listed/i
+    
+    // New listing indicators
+    /new\s*listing/i, // Will default to 0-1 days
+    /just\s*listed/i,
+    /recently\s*listed/i,
   ];
 
+  // First try regex patterns
   for (const pattern of daysOnMarketPatterns) {
     const match = html.match(pattern);
     if (match) {
+      if (pattern.source.includes('new|just|recently')) {
+        console.log(`Found new/recent listing indicator, setting to 1 day`);
+        return 1;
+      }
+      
       const days = parseInt(match[1]);
-      if (days >= 0 && days <= 1000) { // Sanity check
+      if (!isNaN(days) && days >= 0 && days <= 3650) { // Sanity check: up to 10 years
         console.log(`Found days on market: ${days} using pattern ${pattern.source}`);
         return days;
       }
     }
   }
 
-  console.log('Could not find days on market, defaulting to 0');
+  // Try to find listing dates and calculate difference
+  const listingDatePatterns = [
+    /(?:listed|added)(?:\s*on)?[:\s]*([A-Za-z]+\s+\d{1,2},?\s+\d{4})/i,
+    /(?:listed|added)(?:\s*on)?[:\s]*(\d{1,2}\/\d{1,2}\/\d{4})/i,
+    /(?:listed|added)(?:\s*on)?[:\s]*(\d{4}-\d{2}-\d{2})/i,
+    /data-listing-date["\s]*[:=]["\s]*["']([^"']+)["']/i,
+    /listing[_-]date["\s]*[:=]["\s]*["']([^"']+)["']/i,
+  ];
+
+  for (const pattern of listingDatePatterns) {
+    const match = html.match(pattern);
+    if (match && match[1]) {
+      try {
+        const listingDate = new Date(match[1]);
+        const now = new Date();
+        const diffTime = Math.abs(now.getTime() - listingDate.getTime());
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        
+        if (diffDays >= 0 && diffDays <= 3650) { // Sanity check
+          console.log(`Calculated days on market from date ${match[1]}: ${diffDays} days`);
+          return diffDays;
+        }
+      } catch (error) {
+        console.log(`Error parsing date ${match[1]}:`, error.message);
+      }
+    }
+  }
+
+  // Look for structured data (JSON-LD or data attributes)
+  const structuredDataMatches = [
+    /"daysOnMarket"\s*:\s*(\d+)/i,
+    /"datePosted"\s*:\s*"([^"]+)"/i,
+    /"datePublished"\s*:\s*"([^"]+)"/i,
+    /"listingDate"\s*:\s*"([^"]+)"/i,
+  ];
+
+  for (const pattern of structuredDataMatches) {
+    const match = html.match(pattern);
+    if (match) {
+      if (pattern.source.includes('daysOnMarket')) {
+        const days = parseInt(match[1]);
+        if (!isNaN(days) && days >= 0 && days <= 3650) {
+          console.log(`Found days on market in structured data: ${days}`);
+          return days;
+        }
+      } else if (match[1]) {
+        // Try to parse date from structured data
+        try {
+          const date = new Date(match[1]);
+          const now = new Date();
+          const diffTime = Math.abs(now.getTime() - date.getTime());
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          
+          if (diffDays >= 0 && diffDays <= 3650) {
+            console.log(`Calculated days from structured date ${match[1]}: ${diffDays} days`);
+            return diffDays;
+          }
+        } catch (error) {
+          console.log(`Error parsing structured date ${match[1]}:`, error.message);
+        }
+      }
+    }
+  }
+
+  console.log('Could not find days on market information, defaulting to 0');
   return 0;
 }
