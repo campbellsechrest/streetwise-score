@@ -111,22 +111,23 @@ serve(async (req) => {
 });
 
 async function extractPropertyData(html: string, url: string): Promise<PropertyData> {
-  // Extract address from URL or page
-  const addressMatch = url.match(/\/building\/([^\/]+)/);
-  let address = '';
-  if (addressMatch) {
-    address = addressMatch[1]
-      .replace(/-/g, ' ')
-      .replace(/_/g, ', ')
-      .split('/')[0];
-  }
-
-  // Extract apartment number from URL
-  const aptMatch = url.match(/\/([^\/]+)$/);
+  console.log('Extracting property data from HTML...');
+  
+  // Extract address from URL - normalize underscores to spaces and handle apartment number
+  const urlParts = url.split('/');
+  const buildingSlug = urlParts[4] || '';
+  const apartmentPart = urlParts[5] || '';
+  
+  let address = buildingSlug.replace(/_/g, ' ').replace(/-/g, ' ');
   let aptNumber = '';
-  if (aptMatch) {
-    aptNumber = aptMatch[1].toUpperCase();
+  
+  if (apartmentPart && apartmentPart !== '') {
+    aptNumber = apartmentPart.toUpperCase();
   }
+  
+  // Try to extract building info from JSON-LD first
+  const jsonLdData = extractJSONLD(html);
+  console.log('JSON-LD data found:', jsonLdData);
 
   // Extract floor from apartment number
   let floor = 1;
@@ -194,11 +195,26 @@ async function extractPropertyData(html: string, url: string): Promise<PropertyD
   let totalFloors = 0;
   let buildingAge = 0;
   
-  // Try multiple patterns for total floors
-  totalFloors = await extractTotalFloors(html, address);
+  // Use JSON-LD data if available
+  if (jsonLdData?.yearBuilt) {
+    buildingAge = new Date().getFullYear() - parseInt(jsonLdData.yearBuilt);
+    console.log(`Building age from JSON-LD: ${buildingAge} (built ${jsonLdData.yearBuilt})`);
+  }
   
-  // Try multiple patterns for building age  
-  buildingAge = await extractBuildingAge(html, address);
+  if (jsonLdData?.numberOfFloors) {
+    totalFloors = parseInt(jsonLdData.numberOfFloors);
+    console.log(`Total floors from JSON-LD: ${totalFloors}`);
+  }
+  
+  // If not found in JSON-LD, try multiple patterns for total floors
+  if (totalFloors === 0) {
+    totalFloors = await extractTotalFloors(html, address, url);
+  }
+  
+  // If not found in JSON-LD, try multiple patterns for building age  
+  if (buildingAge === 0) {
+    buildingAge = await extractBuildingAge(html, address, url);
+  }
 
   // Extract square footage (leave blank if not listed)
   let squareFeet = 0; // Default to 0 if not found
@@ -349,7 +365,45 @@ function estimateBikeScore(html: string): number {
   return Math.floor(Math.random() * 20) + 60; // 60-80
 }
 
-async function extractTotalFloors(html: string, address: string): Promise<number> {
+function extractJSONLD(html: string): any {
+  try {
+    // Look for JSON-LD structured data
+    const jsonLdMatches = html.match(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi);
+    
+    if (jsonLdMatches) {
+      for (const match of jsonLdMatches) {
+        const jsonContent = match.replace(/<script[^>]*>/i, '').replace(/<\/script>/i, '');
+        try {
+          const data = JSON.parse(jsonContent);
+          console.log('Parsed JSON-LD:', data);
+          
+          // Look for building or residence data
+          if (data['@type'] === 'Residence' || data['@type'] === 'Apartment' || data['@type'] === 'Building') {
+            return data;
+          }
+          
+          // Handle arrays of structured data
+          if (Array.isArray(data)) {
+            for (const item of data) {
+              if (item['@type'] === 'Residence' || item['@type'] === 'Apartment' || item['@type'] === 'Building') {
+                return item;
+              }
+            }
+          }
+        } catch (parseError) {
+          console.log('Failed to parse JSON-LD:', parseError.message);
+        }
+      }
+    }
+    
+    return null;
+  } catch (error) {
+    console.log('Error extracting JSON-LD:', error.message);
+    return null;
+  }
+}
+
+async function extractTotalFloors(html: string, address: string, url: string): Promise<number> {
   console.log('Extracting total floors for:', address);
   
   // Multiple patterns for finding total floors
@@ -402,7 +456,7 @@ async function extractTotalFloors(html: string, address: string): Promise<number
   return 15; // Default fallback
 }
 
-async function extractBuildingAge(html: string, address: string): Promise<number> {
+async function extractBuildingAge(html: string, address: string, url: string): Promise<number> {
   console.log('Extracting building age for:', address);
   
   const currentYear = new Date().getFullYear();
@@ -424,11 +478,14 @@ async function extractBuildingAge(html: string, address: string): Promise<number
     /c\.\s*(\d{4})/gi
   ];
   
-  // Add debug logging to see what we're searching
-  console.log('HTML sample (looking for year):', html.substring(0, 2000));
+  // Clean HTML for better matching - decode entities and remove extra whitespace
+  const cleanedHtml = html.replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ');
+  
+  // Add debug logging to see what we're searching  
+  console.log('HTML sample (looking for year):', cleanedHtml.substring(0, 2000));
   
   for (const pattern of yearPatterns) {
-    const matches = html.match(pattern);
+    const matches = cleanedHtml.match(pattern);
     if (matches) {
       console.log(`Pattern ${pattern.source} matched:`, matches);
       const years = matches.map(match => {
@@ -448,7 +505,65 @@ async function extractBuildingAge(html: string, address: string): Promise<number
     }
   }
   
-  console.log('No year patterns matched in HTML, falling back to web search');
+  console.log('No year patterns matched in unit page HTML, trying building page fallback');
+  
+  // Try to fetch building page if unit page doesn't have the year
+  if (url.includes('/building/')) {
+    try {
+      const buildingUrl = url.split('/').slice(0, 5).join('/'); // Remove apartment part
+      console.log('Fetching building page:', buildingUrl);
+      
+      const response = await fetch(buildingUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+      });
+      
+      if (response.ok) {
+        const buildingHtml = await response.text();
+        const cleanedBuildingHtml = buildingHtml.replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ');
+        
+        // Try JSON-LD on building page first
+        const buildingJsonLd = extractJSONLD(buildingHtml);
+        if (buildingJsonLd?.yearBuilt) {
+          const age = currentYear - parseInt(buildingJsonLd.yearBuilt);
+          console.log(`Found building year from building page JSON-LD: ${buildingJsonLd.yearBuilt}, age: ${age}`);
+          return age;
+        }
+        
+        // Try patterns on building page HTML
+        for (const pattern of yearPatterns) {
+          const matches = cleanedBuildingHtml.match(pattern);
+          if (matches) {
+            console.log(`Pattern ${pattern.source} matched on building page:`, matches);
+            const years = matches.map(match => {
+              const num = match.match(/\d{4}/);
+              return num ? parseInt(num[0]) : 0;
+            }).filter(year => year >= 1800 && year <= currentYear);
+            
+            if (years.length > 0) {
+              const builtYear = Math.min(...years);
+              const age = currentYear - builtYear;
+              if (age >= 0 && age <= 300) {
+                console.log(`Found building year from building page: ${builtYear}, age: ${age}`);
+                return age;
+              }
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.log('Building page fallback failed:', error.message);
+    }
+  }
+  
+  // Last resort: Heuristics for common NYC building types
+  if (html.toLowerCase().includes('prewar') || html.toLowerCase().includes('pre-war')) {
+    console.log('Found "prewar" mention, estimating age as 80 years (built ~1945)');
+    return 80;
+  }
+  
+  console.log('No year patterns matched anywhere, falling back to web search');
   
   // Fallback: try to search for building information online only if direct extraction fails
   if (address) {
@@ -464,7 +579,7 @@ async function extractBuildingAge(html: string, address: string): Promise<number
     }
   }
   
-  console.log('Could not determine building age, using default');
+  console.log('Could not determine building age, using conservative default');
   return 50; // Default fallback
 }
 
