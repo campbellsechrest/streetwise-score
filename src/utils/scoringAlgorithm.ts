@@ -101,28 +101,71 @@ const CONSTRUCTION_QUALITY_MULTIPLIERS: Record<string, number> = {
   'ultra-luxury': 1.5
 };
 
+// NYC pricing benchmarks for fallback when square footage is unavailable
+const NYC_PRICE_BENCHMARKS = {
+  // Price per bedroom ranges by neighborhood tier
+  pricePerBedroom: {
+    luxury: { min: 800000, max: 1500000 },    // UES, UWS, Tribeca, SoHo
+    premium: { min: 600000, max: 1200000 },   // Chelsea, Greenwich Village, Park Slope
+    standard: { min: 400000, max: 800000 },   // Midtown, LES, Williamsburg
+    affordable: { min: 200000, max: 600000 }  // Queens, Bronx, Outer Brooklyn
+  },
+  // Monthly fees as percentage of purchase price (reasonable ranges)
+  monthlyFeesRatio: { min: 0.015, max: 0.04 }, // 1.5% to 4% annually
+  // Price per square foot when available
+  pricePerSqFt: { min: 800, max: 2000 }
+};
+
 // Helper functions for enhanced scoring
 function calculateEnhancedPriceValue(property: PropertyData): number {
-  const pricePerSqFt = property.price / property.squareFeet;
+  // Check if we have valid square footage
+  const hasValidSqFt = property.squareFeet && property.squareFeet > 0;
   
-  // Dynamic price benchmarking based on neighborhood context
-  let expectedPriceRange = { min: 800, max: 2000 }; // Default NYC range
+  let priceScore = 5; // Default baseline
   
-  // Price score (lower price per sqft is better)
-  const priceScore = Math.max(1, Math.min(10, 
-    10 - ((pricePerSqFt - expectedPriceRange.min) / (expectedPriceRange.max - expectedPriceRange.min)) * 8
-  ));
+  if (hasValidSqFt) {
+    // Use price per square foot when available
+    const pricePerSqFt = property.price / property.squareFeet;
+    const benchmarks = NYC_PRICE_BENCHMARKS.pricePerSqFt;
+    
+    // Price score (lower price per sqft is better)
+    priceScore = Math.max(1, Math.min(10, 
+      10 - ((pricePerSqFt - benchmarks.min) / (benchmarks.max - benchmarks.min)) * 8
+    ));
+  } else {
+    // Fallback: Use price per bedroom when square footage unavailable
+    const rooms = Math.max(1, property.bedrooms); // Minimum 1 room for studio
+    const pricePerRoom = property.price / rooms;
+    
+    // Determine neighborhood tier based on price level
+    const neighborhoodTier = pricePerRoom > 1000000 ? 'luxury' :
+                           pricePerRoom > 700000 ? 'premium' :
+                           pricePerRoom > 300000 ? 'standard' : 'affordable';
+    
+    const benchmarks = NYC_PRICE_BENCHMARKS.pricePerBedroom[neighborhoodTier];
+    
+    // Score based on how price per room compares to neighborhood benchmarks
+    priceScore = Math.max(1, Math.min(10,
+      10 - ((pricePerRoom - benchmarks.min) / (benchmarks.max - benchmarks.min)) * 8
+    ));
+  }
   
-  // Monthly fees score
+  // Monthly fees score (reasonable range check)
+  const annualFees = property.monthlyFees * 12;
+  const feesRatio = annualFees / property.price;
+  const benchmarkRatio = NYC_PRICE_BENCHMARKS.monthlyFeesRatio;
+  
   const monthlyFeesScore = Math.max(1, Math.min(10,
-    10 - ((property.monthlyFees - 500) / 400)
+    10 - ((feesRatio - benchmarkRatio.min) / (benchmarkRatio.max - benchmarkRatio.min)) * 6
   ));
   
   // Days on market impact (longer = potentially better deal)
   const marketTimeBonus = property.daysOnMarket ? 
     Math.min(1.5, 1 + (property.daysOnMarket - 30) / 100) : 1.0;
   
-  return ((priceScore + monthlyFeesScore) / 2) * marketTimeBonus;
+  // Ensure no NaN or Infinity values
+  const finalScore = ((priceScore + monthlyFeesScore) / 2) * marketTimeBonus;
+  return isFinite(finalScore) ? finalScore : 5; // Return baseline if calculation fails
 }
 
 function calculateEnhancedLocation(property: PropertyData): number {
