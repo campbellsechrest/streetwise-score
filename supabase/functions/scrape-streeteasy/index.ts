@@ -416,7 +416,8 @@ function extractJSONLD(html: string): any {
     return null;
   } catch (error) {
     console.log('Error extracting JSON-LD:', error.message);
-  return null;
+    return null;
+  }
 }
 
 async function extractWithOpenAI(html: string, address: string, aptNumber: string): Promise<PropertyData | null> {
