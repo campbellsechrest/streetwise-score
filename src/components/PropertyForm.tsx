@@ -174,7 +174,7 @@ export function PropertyForm({ onSubmit, isLoading }: PropertyFormProps) {
                 value={formData.price ? formData.price.toLocaleString() : ''}
                 onChange={(e) => {
                   const numericValue = e.target.value.replace(/,/g, '');
-                  if (!isNaN(Number(numericValue)) || numericValue === '') {
+                  if (numericValue === '' || !isNaN(Number(numericValue))) {
                     setFormData(prev => ({ ...prev, price: numericValue === '' ? 0 : Number(numericValue) }));
                   }
                 }}
@@ -190,7 +190,7 @@ export function PropertyForm({ onSubmit, isLoading }: PropertyFormProps) {
                 value={formData.monthlyFees ? formData.monthlyFees.toLocaleString() : ''}
                 onChange={(e) => {
                   const numericValue = e.target.value.replace(/,/g, '');
-                  if (!isNaN(Number(numericValue)) || numericValue === '') {
+                  if (numericValue === '' || !isNaN(Number(numericValue))) {
                     setFormData(prev => ({ ...prev, monthlyFees: numericValue === '' ? 0 : Number(numericValue) }));
                   }
                 }}
@@ -206,7 +206,7 @@ export function PropertyForm({ onSubmit, isLoading }: PropertyFormProps) {
                 value={formData.squareFeet ? formData.squareFeet.toLocaleString() : ''}
                 onChange={(e) => {
                   const numericValue = e.target.value.replace(/,/g, '');
-                  if (!isNaN(Number(numericValue)) || numericValue === '') {
+                  if (numericValue === '' || !isNaN(Number(numericValue))) {
                     setFormData(prev => ({ ...prev, squareFeet: numericValue === '' ? 0 : Number(numericValue) }));
                   }
                 }}
