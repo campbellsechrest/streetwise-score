@@ -1,6 +1,9 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
+// Firecrawl API integration
+const FIRECRAWL_API_KEY = Deno.env.get('FIRECRAWL_API_KEY');
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -32,19 +35,57 @@ serve(async (req) => {
     const { url } = await req.json();
     console.log('Scraping StreetEasy URL:', url);
 
-    // Fetch the StreetEasy page
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    let html = '';
+    
+    try {
+      // Try direct fetch first
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Direct fetch failed: ${response.status}`);
       }
-    });
 
-    if (!response.ok) {
-      throw new Error(`Failed to fetch page: ${response.status}`);
+      html = await response.text();
+      console.log('Direct fetch successful, HTML length:', html.length);
+      
+    } catch (directFetchError) {
+      console.log('Direct fetch failed, trying Firecrawl:', directFetchError.message);
+      
+      if (!FIRECRAWL_API_KEY) {
+        throw new Error('Direct fetch failed and no Firecrawl API key available');
+      }
+
+      // Fallback to Firecrawl
+      const firecrawlResponse = await fetch('https://api.firecrawl.dev/v1/scrape', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${FIRECRAWL_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          url: url,
+          formats: ['html']
+        })
+      });
+
+      if (!firecrawlResponse.ok) {
+        const errorText = await firecrawlResponse.text();
+        throw new Error(`Firecrawl failed: ${firecrawlResponse.status} - ${errorText}`);
+      }
+
+      const firecrawlData = await firecrawlResponse.json();
+      
+      if (!firecrawlData.success || !firecrawlData.data?.html) {
+        throw new Error('Firecrawl did not return valid HTML data');
+      }
+
+      html = firecrawlData.data.html;
+      console.log('Firecrawl fetch successful, HTML length:', html.length);
     }
-
-    const html = await response.text();
-    console.log('Fetched HTML, length:', html.length);
 
     // Extract property data using regex patterns
     const propertyData = extractPropertyData(html, url);
