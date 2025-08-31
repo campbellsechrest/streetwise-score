@@ -1,16 +1,18 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
-import { ScoreBreakdown, getScoreColor, getScoreLabel } from '@/utils/scoringAlgorithm';
-import { TrendingUp, Home, GraduationCap, Building, Zap, MapPin, TrendingDown, Heart } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { PropertyData, ScoreBreakdown, getScoreColor, getScoreLabel } from '@/utils/scoringAlgorithm';
+import { TrendingUp, Home, GraduationCap, Building, Zap, MapPin, TrendingDown, Heart, ChevronDown, Calendar, DollarSign } from 'lucide-react';
 
 interface ScoreCardProps {
   scores: ScoreBreakdown;
   address: string;
   price: number;
+  propertyData?: PropertyData;
 }
 
-export function ScoreCard({ scores, address, price }: ScoreCardProps) {
+export function ScoreCard({ scores, address, price, propertyData }: ScoreCardProps) {
   const scoreItems = [
     {
       label: 'Price Value',
@@ -115,6 +117,66 @@ export function ScoreCard({ scores, address, price }: ScoreCardProps) {
                 <p className="text-sm text-muted-foreground">
                   {item.description}
                 </p>
+
+                {/* Enhanced Market Context Details */}
+                {item.label === 'Market Context' && propertyData?.priceHistoryDetails && (
+                  <Collapsible className="mt-4">
+                    <CollapsibleTrigger asChild>
+                      <button className="flex items-center space-x-2 text-sm text-primary hover:text-primary/80 transition-colors">
+                        <span>View Price History Details</span>
+                        <ChevronDown className="h-3 w-3" />
+                      </button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="mt-3 space-y-3">
+                      <div className="p-3 bg-muted/50 rounded-lg space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium">Price Change:</span>
+                          <div className="flex items-center space-x-1">
+                            {propertyData.priceHistoryDetails.percentageChange > 0 ? (
+                              <TrendingUp className="h-3 w-3 text-red-500" />
+                            ) : (
+                              <TrendingDown className="h-3 w-3 text-green-500" />
+                            )}
+                            <span className={`text-sm font-semibold ${
+                              propertyData.priceHistoryDetails.percentageChange > 0 ? 'text-red-500' : 'text-green-500'
+                            }`}>
+                              {propertyData.priceHistoryDetails.percentageChange > 0 ? '+' : ''}
+                              {propertyData.priceHistoryDetails.percentageChange.toFixed(1)}%
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium">Time Period:</span>
+                          <span className="text-sm text-muted-foreground">
+                            {propertyData.priceHistoryDetails.timeContext}
+                          </span>
+                        </div>
+                        <div className="pt-2">
+                          <p className="text-xs text-muted-foreground leading-relaxed">
+                            {propertyData.priceHistoryDetails.analysis}
+                          </p>
+                        </div>
+                        
+                        {propertyData.priceHistoryDetails.events && propertyData.priceHistoryDetails.events.length > 0 && (
+                          <div className="pt-2 border-t border-muted-foreground/20">
+                            <h5 className="text-xs font-medium mb-2">Price History Timeline:</h5>
+                            <div className="space-y-1">
+                              {propertyData.priceHistoryDetails.events.slice(0, 3).map((event, idx) => (
+                                <div key={idx} className="flex items-center space-x-2 text-xs">
+                                  <Calendar className="h-3 w-3 text-muted-foreground" />
+                                  <span className="text-muted-foreground">{event.date}</span>
+                                  <DollarSign className="h-3 w-3 text-muted-foreground" />
+                                  <span className="font-medium">${event.price.toLocaleString()}</span>
+                                  <span className="text-muted-foreground">- {event.event}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </CollapsibleContent>
+                  </Collapsible>
+                )}
               </CardContent>
             </Card>
           );
