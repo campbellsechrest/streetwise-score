@@ -170,13 +170,13 @@ async function extractPropertyData(html: string, url: string): Promise<PropertyD
   
   console.log('=== EXTRACTING MONTHLY FEES ===');
   
-  // First, try to find combined monthly charges patterns (more reliable)
+  // Prefer highly specific labels that StreetEasy uses
   const combinedPatterns = [
-    /Monthly charges?[:\s]*\$([0-9,]+)/i,
-    /Total monthly[:\s]*\$([0-9,]+)/i,
-    /Monthly payment[:\s]*\$([0-9,]+)/i,
-    /Monthly fee[:\s]*\$([0-9,]+)/i,
-    /Common charges?[:\s]*\$([0-9,]+)(?:\/mo)?/i
+    /Maintenance fees?[\s\S]{0,80}?\$([0-9,]+)(?:\/mo)?/i,
+    /Common charges?[\s\S]{0,80}?\$([0-9,]+)(?:\/mo)?/i,
+    /HOA dues?[\s\S]{0,80}?\$([0-9,]+)(?:\/mo)?/i,
+    /Monthly charges?[\s\S]{0,80}?\$([0-9,]+)/i,
+    /Total monthly(?: payment)?[\s\S]{0,80}?\$([0-9,]+)/i
   ];
   
   let combinedFound = false;
@@ -184,7 +184,7 @@ async function extractPropertyData(html: string, url: string): Promise<PropertyD
     const match = html.match(pattern);
     if (match) {
       monthlyFees = parseInt(match[1].replace(/,/g, ''));
-      console.log(`Found combined monthly fees using pattern ${pattern}: $${monthlyFees}`);
+      console.log(`Found combined/monthly fee using pattern ${pattern}: $${monthlyFees}`);
       combinedFound = true;
       break;
     }
@@ -194,10 +194,11 @@ async function extractPropertyData(html: string, url: string): Promise<PropertyD
   if (!combinedFound) {
     console.log('No combined monthly fees found, trying separate maintenance and taxes...');
     
-    // Look for maintenance fee with more specific patterns
+    // Look for maintenance fee with more specific patterns (co-ops)
     const maintenancePatterns = [
-      /Maintenance[:\s]*\$([0-9,]+)(?:\/mo)?/i,
-      /Maintenance fee[:\s]*\$([0-9,]+)(?:\/mo)?/i,
+      /Maintenance(?: fees?)?[\s\S]{0,80}?\$([0-9,]+)(?:\/mo)?/i,
+      /Common charges?[\s\S]{0,80}?\$([0-9,]+)(?:\/mo)?/i,
+      /HOA dues?[\s\S]{0,80}?\$([0-9,]+)(?:\/mo)?/i,
       /\$([0-9,]+)\/mo[^0-9]*maintenance/i
     ];
     
@@ -211,7 +212,14 @@ async function extractPropertyData(html: string, url: string): Promise<PropertyD
       }
     }
     
-    // Look for taxes with more specific patterns
+    // Detect if taxes are stated as included in maintenance
+    const taxesIncludedInMaint = /Taxes[^<]{0,80}Included in maintenance fees/i.test(html) ||
+                                 /Taxes[^<]{0,80}included in maintenance/i.test(html);
+    if (taxesIncludedInMaint) {
+      console.log('Detected "Taxes included in maintenance fees" message');
+    }
+
+    // Look for taxes (condos typically show separate taxes)
     const taxPatterns = [
       /Tax(?:es)?[:\s]*\$([0-9,]+)(?:\/mo)?/i,
       /Property tax[:\s]*\$([0-9,]+)(?:\/mo)?/i,
@@ -219,18 +227,22 @@ async function extractPropertyData(html: string, url: string): Promise<PropertyD
     ];
     
     let taxes = 0;
-    for (const pattern of taxPatterns) {
-      const match = html.match(pattern);
-      if (match) {
-        taxes = parseInt(match[1].replace(/,/g, ''));
-        console.log(`Found taxes using pattern ${pattern}: $${taxes}`);
-        break;
+    if (!taxesIncludedInMaint) {
+      for (const pattern of taxPatterns) {
+        const match = html.match(pattern);
+        if (match) {
+          taxes = parseInt(match[1].replace(/,/g, ''));
+          console.log(`Found taxes using pattern ${pattern}: $${taxes}`);
+          break;
+        }
       }
+    } else {
+      console.log('Skipping taxes amount because they are included in maintenance');
     }
     
     console.log(`Maintenance: $${maintenance}, Taxes: $${taxes}`);
     
-    // Only combine if both are reasonable amounts and sum makes sense
+    // Combine logically
     if (maintenance > 0 && taxes > 0 && (maintenance + taxes) < 20000) {
       monthlyFees = maintenance + taxes;
       console.log(`Combined maintenance + taxes: $${monthlyFees}`);
@@ -243,17 +255,22 @@ async function extractPropertyData(html: string, url: string): Promise<PropertyD
     }
   }
   
-  // Fallback: try generic monthly pattern but be more selective
+  // Fallback: scan all $X,XXX/mo amounts and choose the one closest to maintenance/common charges context
   if (monthlyFees === 0) {
-    console.log('No specific monthly fees found, trying generic patterns...');
-    const genericMatches = html.match(/\$([0-9,]+)\/mo/g) || [];
-    
-    for (const match of genericMatches) {
-      const amount = parseInt(match.replace(/[$,\/mo]/g, ''));
-      // Only consider reasonable monthly fee amounts (not price)
-      if (amount > 500 && amount < 20000) {
+    console.log('No specific monthly fees found, scanning generic $X,XXX/mo matches with context filtering...');
+    const regex = /\$([0-9,]+)\/mo/gi;
+    let m: RegExpExecArray | null;
+    while ((m = regex.exec(html)) !== null) {
+      const amount = parseInt(m[1].replace(/,/g, ''));
+      if (!(amount > 200 && amount < 20000)) continue; // sanity check
+
+      const idx = m.index;
+      const context = html.slice(Math.max(0, idx - 120), Math.min(html.length, idx + 120)).toLowerCase();
+      const looksLikeFees = /maintenance|common charge|hoa|monthly charge|common\s+charges/.test(context);
+      const looksLikePayment = /estimated payment|mortgage|principal|interest|loan|down payment|closing costs/.test(context);
+      if (looksLikeFees && !looksLikePayment) {
         monthlyFees = amount;
-        console.log(`Using generic monthly pattern: $${monthlyFees}`);
+        console.log(`Context-selected monthly fees: $${monthlyFees}`);
         break;
       }
     }
