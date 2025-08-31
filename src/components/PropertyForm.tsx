@@ -10,7 +10,7 @@ import { UrlInput } from '@/components/UrlInput';
 
 const AMENITIES_OPTIONS = [
   'Doorman', 'Elevator', 'Gym', 'Pool', 'Rooftop', 'Laundry', 'Storage', 'Bike Room',
-  'Playground', 'Garden', 'Concierge', 'Valet', 'Business Center', 'Library'
+  'Playground', 'Garden', 'Business Center', 'Live-In Super', 'Parking'
 ];
 
 const SCHOOL_DISTRICTS = [
