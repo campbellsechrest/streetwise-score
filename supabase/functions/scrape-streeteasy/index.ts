@@ -88,7 +88,7 @@ serve(async (req) => {
     }
 
     // Extract property data using regex patterns
-    const propertyData = extractPropertyData(html, url);
+    const propertyData = await extractPropertyData(html, url);
     console.log('Extracted property data:', propertyData);
 
     return new Response(JSON.stringify({ success: true, data: propertyData }), {
@@ -110,7 +110,7 @@ serve(async (req) => {
   }
 });
 
-function extractPropertyData(html: string, url: string): PropertyData {
+async function extractPropertyData(html: string, url: string): Promise&lt;PropertyData&gt; {
   // Extract address from URL or page
   const addressMatch = url.match(/\/building\/([^\/]+)/);
   let address = '';
@@ -190,20 +190,15 @@ function extractPropertyData(html: string, url: string): PropertyData {
     bathrooms = parseFloat(bathroomMatch[1]);
   }
 
-  // Extract building info
-  let totalFloors = 15;
-  let buildingAge = 50;
+  // Extract building info with multiple patterns and fallbacks
+  let totalFloors = 0;
+  let buildingAge = 0;
   
-  const storiesMatch = html.match(/(\d+)\s+stories/);
-  if (storiesMatch) {
-    totalFloors = parseInt(storiesMatch[1]);
-  }
-
-  const builtMatch = html.match(/(\d{4})\s+built/);
-  if (builtMatch) {
-    const builtYear = parseInt(builtMatch[1]);
-    buildingAge = new Date().getFullYear() - builtYear;
-  }
+  // Try multiple patterns for total floors
+  totalFloors = await extractTotalFloors(html, address);
+  
+  // Try multiple patterns for building age  
+  buildingAge = await extractBuildingAge(html, address);
 
   // Extract square footage (leave blank if not listed)
   let squareFeet = 0; // Default to 0 if not found
@@ -352,4 +347,176 @@ function estimateBikeScore(html: string): number {
   }
   
   return Math.floor(Math.random() * 20) + 60; // 60-80
+}
+
+async function extractTotalFloors(html: string, address: string): Promise<number> {
+  console.log('Extracting total floors for:', address);
+  
+  // Multiple patterns for finding total floors
+  const floorPatterns = [
+    /(\d+)\s*-?\s*story/gi,
+    /(\d+)\s*-?\s*stories/gi,
+    /(\d+)\s*floors?/gi,
+    /building.*?(\d+)\s*floors?/gi,
+    /(\d+)\s*floor\s*building/gi,
+    /total.*?(\d+)\s*floors?/gi,
+    /(\d+)\s*level/gi,
+    /height.*?(\d+)\s*floors?/gi,
+    /(\d+)\s*fl\b/gi
+  ];
+  
+  for (const pattern of floorPatterns) {
+    const matches = html.match(pattern);
+    if (matches) {
+      // Extract all potential floor numbers and find the most reasonable one
+      const floorNumbers = matches.map(match => {
+        const num = match.match(/\d+/);
+        return num ? parseInt(num[0]) : 0;
+      }).filter(num => num > 0 && num <= 100); // Reasonable building height
+      
+      if (floorNumbers.length > 0) {
+        // Take the most common number, or the first reasonable one
+        const floors = floorNumbers.sort((a, b) => b - a)[0];
+        if (floors >= 2 && floors <= 100) {
+          console.log(`Found total floors: ${floors} using pattern`);
+          return floors;
+        }
+      }
+    }
+  }
+  
+  // Fallback: try to search for building information online
+  if (address) {
+    try {
+      const searchResult = await searchBuildingInfo(address, 'floors stories height');
+      if (searchResult.floors > 0) {
+        console.log(`Found total floors via search: ${searchResult.floors}`);
+        return searchResult.floors;
+      }
+    } catch (error) {
+      console.log('Web search fallback failed for floors:', error.message);
+    }
+  }
+  
+  console.log('Could not determine total floors, using default');
+  return 15; // Default fallback
+}
+
+async function extractBuildingAge(html: string, address: string): Promise<number> {
+  console.log('Extracting building age for:', address);
+  
+  const currentYear = new Date().getFullYear();
+  
+  // Multiple patterns for finding construction year
+  const yearPatterns = [
+    /built\s*in\s*(\d{4})/gi,
+    /(\d{4})\s*built/gi,
+    /constructed\s*in\s*(\d{4})/gi,
+    /(\d{4})\s*construction/gi,
+    /year\s*built:?\s*(\d{4})/gi,
+    /built:?\s*(\d{4})/gi,
+    /(\d{4})\s*vintage/gi,
+    /erected\s*in\s*(\d{4})/gi,
+    /(\d{4})\s*building/gi,
+    /circa\s*(\d{4})/gi,
+    /c\.\s*(\d{4})/gi
+  ];
+  
+  for (const pattern of yearPatterns) {
+    const matches = html.match(pattern);
+    if (matches) {
+      const years = matches.map(match => {
+        const num = match.match(/\d{4}/);
+        return num ? parseInt(num[0]) : 0;
+      }).filter(year => year >= 1800 && year <= currentYear);
+      
+      if (years.length > 0) {
+        // Take the most reasonable year (likely the earliest valid one)
+        const builtYear = Math.min(...years);
+        const age = currentYear - builtYear;
+        if (age >= 0 && age <= 300) {
+          console.log(`Found building year: ${builtYear}, age: ${age}`);
+          return age;
+        }
+      }
+    }
+  }
+  
+  // Fallback: try to search for building information online
+  if (address) {
+    try {
+      const searchResult = await searchBuildingInfo(address, 'built constructed year history');
+      if (searchResult.year > 0) {
+        const age = currentYear - searchResult.year;
+        console.log(`Found building year via search: ${searchResult.year}, age: ${age}`);
+        return age;
+      }
+    } catch (error) {
+      console.log('Web search fallback failed for building age:', error.message);
+    }
+  }
+  
+  console.log('Could not determine building age, using default');
+  return 50; // Default fallback
+}
+
+async function searchBuildingInfo(address: string, searchTerms: string): Promise<{floors: number, year: number}> {
+  console.log('Searching web for building info:', address);
+  
+  // Clean up address for search
+  const cleanAddress = address.replace(/#.*$/, '').trim();
+  const searchQuery = `"${cleanAddress}" NYC building ${searchTerms}`;
+  
+  try {
+    // Use a web search API or scrape search results
+    const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}`;
+    
+    const response = await fetch(searchUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Search failed: ${response.status}`);
+    }
+    
+    const searchHtml = await response.text();
+    
+    // Extract building information from search results
+    let floors = 0;
+    let year = 0;
+    
+    // Look for floors in search results
+    const floorMatch = searchHtml.match(/(\d+)\s*(?:story|stories|floor|floors)/gi);
+    if (floorMatch) {
+      const floorNumbers = floorMatch.map(match => {
+        const num = match.match(/\d+/);
+        return num ? parseInt(num[0]) : 0;
+      }).filter(num => num >= 2 && num <= 100);
+      
+      if (floorNumbers.length > 0) {
+        floors = Math.max(...floorNumbers);
+      }
+    }
+    
+    // Look for construction year in search results
+    const yearMatch = searchHtml.match(/(?:built|constructed|erected).*?(\d{4})|(\d{4}).*?(?:built|constructed)/gi);
+    if (yearMatch) {
+      const years = yearMatch.map(match => {
+        const num = match.match(/\d{4}/);
+        return num ? parseInt(num[0]) : 0;
+      }).filter(y => y >= 1800 && y <= new Date().getFullYear());
+      
+      if (years.length > 0) {
+        year = Math.min(...years); // Take earliest reasonable year
+      }
+    }
+    
+    return { floors, year };
+    
+  } catch (error) {
+    console.log('Web search error:', error.message);
+    return { floors: 0, year: 0 };
+  }
 }
