@@ -144,11 +144,36 @@ function extractPropertyData(html: string, url: string): PropertyData {
     price = parseInt(priceMatch[1].replace(/,/g, ''));
   }
 
-  // Extract maintenance fees
+  // Extract maintenance fees and taxes (combine them)
   let monthlyFees = 0;
-  const feesMatch = html.match(/\$([0-9,]+)\/mo/);
-  if (feesMatch) {
-    monthlyFees = parseInt(feesMatch[1].replace(/,/g, ''));
+  
+  // Look for maintenance fee
+  const maintenanceMatch = html.match(/Maintenance[\s\S]*?\$([0-9,]+)(?:\/mo)?/i) || 
+                          html.match(/Common charges[\s\S]*?\$([0-9,]+)(?:\/mo)?/i) ||
+                          html.match(/\$([0-9,]+)\/mo.*maintenance/i);
+  let maintenance = 0;
+  if (maintenanceMatch) {
+    maintenance = parseInt(maintenanceMatch[1].replace(/,/g, ''));
+  }
+  
+  // Look for taxes
+  const taxMatch = html.match(/Tax(?:es)?[\s\S]*?\$([0-9,]+)(?:\/mo)?/i) || 
+                  html.match(/\$([0-9,]+)\/mo.*tax/i) ||
+                  html.match(/Property tax[\s\S]*?\$([0-9,]+)(?:\/mo)?/i);
+  let taxes = 0;
+  if (taxMatch) {
+    taxes = parseInt(taxMatch[1].replace(/,/g, ''));
+  }
+  
+  // Combine maintenance and taxes
+  monthlyFees = maintenance + taxes;
+  
+  // If we didn't find separate values, try to find a combined monthly fee
+  if (monthlyFees === 0) {
+    const combinedMatch = html.match(/\$([0-9,]+)\/mo/);
+    if (combinedMatch) {
+      monthlyFees = parseInt(combinedMatch[1].replace(/,/g, ''));
+    }
   }
 
   // Extract bedrooms and bathrooms
@@ -180,9 +205,9 @@ function extractPropertyData(html: string, url: string): PropertyData {
     buildingAge = new Date().getFullYear() - builtYear;
   }
 
-  // Extract square footage (often not listed for co-ops)
-  let squareFeet = estimateSquareFootage(bedrooms, bathrooms);
-  const sqftMatch = html.match(/(\d+)\s*ft²/);
+  // Extract square footage (leave blank if not listed)
+  let squareFeet = 0; // Default to 0 if not found
+  const sqftMatch = html.match(/(\d+)\s*(?:sq\.?\s*ft\.?|ft²|square feet)/i);
   if (sqftMatch) {
     squareFeet = parseInt(sqftMatch[1]);
   }
