@@ -571,7 +571,7 @@ async function extractWithOpenAI(html: string, address: string, aptNumber: strin
   "buildingAge": number (current year minus construction year),
   "buildingType": "string (must be one of: prewar, postwar, modern, luxury, historic, other)",
   "daysOnMarket": number (CRITICAL: carefully search for days the listing has been active),
-  "amenities": ["array of amenities like Doorman, Gym, Pool, etc."],
+  "amenities": ["array using ONLY these exact amenities: Doorman, Elevator, Gym, Pool, Rooftop/Garden, Laundry, Storage, Bike Room, Playground, Live-In Super, Parking"],
   "walkScore": number (estimate 60-95 based on NYC location),
   "transitScore": number (estimate 60-95 based on subway access),
   "bikeScore": number (estimate 60-90 based on bike infrastructure)
@@ -602,12 +602,23 @@ Building Type Classification Rules:
 - "other": If none of the above categories clearly apply
 
 Key patterns to look for:
-- Construction year: "1923 built", "built 1925", "built in 1930"
+- Construction year: "1923 built", "built 1925", "built in 1930"  
 - Price: "$1,450,000" format
 - Monthly fees: maintenance + taxes combined
 - Floors: "9-story", "15 floors", "story building"
-- Amenities: doorman, gym, pool, rooftop, parking, laundry, etc.
-- Luxury indicators: "luxury", "premium", "high-end", "concierge", "white glove"
+- Amenities specific patterns:
+  * Doorman: "doorman", "24-hour doorman", "full-time doorman"
+  * Elevator: "elevator", "elevators", "lift"
+  * Gym: "gym", "fitness", "fitness center", "workout room"
+  * Pool: "pool", "swimming pool", "lap pool"
+  * Rooftop/Garden: "rooftop", "roof deck", "garden", "shared outdoor space", "outdoor space", "terrace"
+  * Laundry: "laundry", "laundry room", "washer/dryer"
+  * Storage: "storage", "storage room", "storage space"
+  * Bike Room: "bike room", "bicycle storage", "bike storage"
+  * Playground: "playground", "children play", "kids play area"
+  * Live-In Super: "live-in super", "resident manager", "super on site"
+  * Parking: "parking", "garage", "parking space"
+- Luxury indicators: "luxury", "premium", "high-end", "white glove"
 
 Address base: "${address}"
 Apartment: "${aptNumber}"
