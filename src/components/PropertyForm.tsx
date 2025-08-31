@@ -32,35 +32,6 @@ const BUILDING_TYPES = [
   { value: 'other', label: 'Other' }
 ];
 
-const CONSTRUCTION_QUALITY = [
-  { value: 'basic', label: 'Basic' },
-  { value: 'good', label: 'Good' },
-  { value: 'luxury', label: 'Luxury' },
-  { value: 'ultra-luxury', label: 'Ultra-Luxury' }
-];
-
-const PARKING_TYPES = [
-  { value: 'none', label: 'No Parking' },
-  { value: 'street', label: 'Street Parking' },
-  { value: 'assigned', label: 'Assigned Spot' },
-  { value: 'garage', label: 'Garage' }
-];
-
-const OUTDOOR_SPACE_OPTIONS = [
-  { value: 'none', label: 'None' },
-  { value: 'balcony', label: 'Balcony' },
-  { value: 'terrace', label: 'Terrace' },
-  { value: 'garden', label: 'Garden Access' },
-  { value: 'rooftop', label: 'Rooftop Access' }
-];
-
-const MARKET_TRENDS = [
-  { value: 'hot', label: 'Hot Market' },
-  { value: 'warm', label: 'Warm Market' },
-  { value: 'cool', label: 'Cool Market' },
-  { value: 'cold', label: 'Cold Market' }
-];
-
 const PRICE_HISTORY = [
   { value: 'stable', label: 'Stable' },
   { value: 'increased', label: 'Recently Increased' },
@@ -75,21 +46,28 @@ interface PropertyFormProps {
 export function PropertyForm({ onSubmit, isLoading }: PropertyFormProps) {
   const [showUrlInput, setShowUrlInput] = useState(true);
   const [formData, setFormData] = useState<Partial<PropertyData>>({
+    address: '',
+    price: 0,
+    monthlyFees: 0,
+    floor: 1,
+    totalFloors: 10,
+    squareFeet: 0,
+    bedrooms: 1,
+    bathrooms: 1,
+    schoolDistrict: 'District 2',
+    buildingAge: 50,
     amenities: [],
     homeFeatures: [],
-    schoolDistrict: '',
     walkScore: 70,
-    transitScore: 65,
+    transitScore: 80,
     bikeScore: 60,
     buildingType: 'other',
-    constructionQuality: 'good',
-    hasParking: false,
-    parkingType: 'none',
-    outdoorSpace: 'none',
     petFriendly: false,
-    marketTrend: 'warm',
     priceHistory: 'stable',
     safetyScore: 6,
+    proximityToPark: 5,
+    proximityToSubway: 3,
+    daysOnMarket: 30,
     noiseLevel: 5
   });
 
@@ -289,7 +267,6 @@ export function PropertyForm({ onSubmit, isLoading }: PropertyFormProps) {
               </Select>
             </div>
             
-            {/* Enhanced Building Details */}
             <div>
               <Label htmlFor="buildingType">Building Type</Label>
               <Select 
@@ -302,74 +279,6 @@ export function PropertyForm({ onSubmit, isLoading }: PropertyFormProps) {
                 <SelectContent>
                   {BUILDING_TYPES.map((type) => (
                     <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <div>
-              <Label htmlFor="constructionQuality">Construction Quality</Label>
-              <Select 
-                value={formData.constructionQuality || ''} 
-                onValueChange={(value) => setFormData(prev => ({ ...prev, constructionQuality: value as PropertyData['constructionQuality'] }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select quality" />
-                </SelectTrigger>
-                <SelectContent>
-                  {CONSTRUCTION_QUALITY.map((quality) => (
-                    <SelectItem key={quality.value} value={quality.value}>{quality.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <div>
-              <Label htmlFor="renovationYear">Renovation Year (optional)</Label>
-              <Input
-                id="renovationYear"
-                type="number"
-                placeholder="2020"
-                value={formData.renovationYear || ''}
-                onChange={(e) => setFormData(prev => ({ ...prev, renovationYear: Number(e.target.value) }))}
-              />
-            </div>
-            
-            <div>
-              <Label htmlFor="parkingType">Parking</Label>
-              <Select 
-                value={formData.parkingType || ''} 
-                onValueChange={(value) => {
-                  setFormData(prev => ({ 
-                    ...prev, 
-                    parkingType: value as PropertyData['parkingType'],
-                    hasParking: value !== 'none'
-                  }))
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select parking" />
-                </SelectTrigger>
-                <SelectContent>
-                  {PARKING_TYPES.map((parking) => (
-                    <SelectItem key={parking.value} value={parking.value}>{parking.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <div>
-              <Label htmlFor="outdoorSpace">Outdoor Space</Label>
-              <Select 
-                value={formData.outdoorSpace || ''} 
-                onValueChange={(value) => setFormData(prev => ({ ...prev, outdoorSpace: value as PropertyData['outdoorSpace'] }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select outdoor space" />
-                </SelectTrigger>
-                <SelectContent>
-                  {OUTDOOR_SPACE_OPTIONS.map((space) => (
-                    <SelectItem key={space.value} value={space.value}>{space.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -424,23 +333,6 @@ export function PropertyForm({ onSubmit, isLoading }: PropertyFormProps) {
             </div>
             
             <div>
-              <Label htmlFor="marketTrend">Market Trend</Label>
-              <Select 
-                value={formData.marketTrend || ''} 
-                onValueChange={(value) => setFormData(prev => ({ ...prev, marketTrend: value as PropertyData['marketTrend'] }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select trend" />
-                </SelectTrigger>
-                <SelectContent>
-                  {MARKET_TRENDS.map((trend) => (
-                    <SelectItem key={trend.value} value={trend.value}>{trend.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <div>
               <Label htmlFor="priceHistory">Price History</Label>
               <Select 
                 value={formData.priceHistory || ''} 
@@ -465,17 +357,6 @@ export function PropertyForm({ onSubmit, isLoading }: PropertyFormProps) {
                 placeholder="0"
                 value={formData.daysOnMarket !== undefined ? formData.daysOnMarket : ''}
                 onChange={(e) => setFormData(prev => ({ ...prev, daysOnMarket: Number(e.target.value) }))}
-              />
-            </div>
-            
-            <div>
-              <Label htmlFor="propertyTaxes">Annual Property Taxes ($, optional)</Label>
-              <Input
-                id="propertyTaxes"
-                type="number"
-                placeholder="15000"
-                value={formData.propertyTaxes || ''}
-                onChange={(e) => setFormData(prev => ({ ...prev, propertyTaxes: Number(e.target.value) }))}
               />
             </div>
           </div>

@@ -17,8 +17,6 @@ export interface PropertyData {
   
   // Enhanced building data
   buildingType?: 'prewar' | 'postwar' | 'modern' | 'luxury' | 'historic' | 'other';
-  renovationYear?: number;
-  constructionQuality?: 'basic' | 'good' | 'luxury' | 'ultra-luxury';
   
   // Location enhancements
   neighborhood?: string;
@@ -27,19 +25,14 @@ export interface PropertyData {
   safetyScore?: number; // 1-10
   
   // Property specifics
-  hasParking?: boolean;
-  parkingType?: 'garage' | 'street' | 'assigned' | 'none';
-  outdoorSpace?: 'none' | 'balcony' | 'terrace' | 'garden' | 'rooftop';
   noiseLevel?: number; // 1-10, 1 being quiet
   petFriendly?: boolean;
   
   // Market context
   daysOnMarket?: number;
   priceHistory?: 'increased' | 'decreased' | 'stable';
-  marketTrend?: 'hot' | 'warm' | 'cool' | 'cold';
   
   // Financial
-  propertyTaxes?: number;
   assessmentRatio?: number; // assessment value / market value
 }
 
@@ -115,26 +108,14 @@ function calculateEnhancedPriceValue(property: PropertyData): number {
   // Dynamic price benchmarking based on neighborhood context
   let expectedPriceRange = { min: 800, max: 2000 }; // Default NYC range
   
-  // Adjust based on market trend
-  const marketMultiplier = {
-    'hot': 1.2,
-    'warm': 1.1,
-    'cool': 0.9,
-    'cold': 0.8
-  }[property.marketTrend || 'warm'] || 1.0;
-  
-  expectedPriceRange.min *= marketMultiplier;
-  expectedPriceRange.max *= marketMultiplier;
-  
   // Price score (lower price per sqft is better)
   const priceScore = Math.max(1, Math.min(10, 
     10 - ((pricePerSqFt - expectedPriceRange.min) / (expectedPriceRange.max - expectedPriceRange.min)) * 8
   ));
   
-  // Monthly fees with total cost consideration
-  const totalMonthlyCost = property.monthlyFees + (property.propertyTaxes || 0) / 12;
+  // Monthly fees score
   const monthlyFeesScore = Math.max(1, Math.min(10,
-    10 - ((totalMonthlyCost - 500) / 400) // Adjusted range for total costs
+    10 - ((property.monthlyFees - 500) / 400)
   ));
   
   // Days on market impact (longer = potentially better deal)
@@ -172,21 +153,10 @@ function calculateEnhancedLocation(property: PropertyData): number {
 
 function calculateEnhancedBuilding(property: PropertyData): number {
   // Base age score
-  const currentYear = new Date().getFullYear();
   const ageScore = Math.max(1, Math.min(10, 10 - (property.buildingAge / 15)));
   
   // Building type bonus
   const buildingTypeScore = BUILDING_TYPE_SCORES[property.buildingType || 'other'];
-  
-  // Construction quality multiplier
-  const qualityMultiplier = CONSTRUCTION_QUALITY_MULTIPLIERS[property.constructionQuality || 'good'];
-  
-  // Renovation impact
-  let renovationBonus = 1.0;
-  if (property.renovationYear) {
-    const yearsSinceRenovation = currentYear - property.renovationYear;
-    renovationBonus = Math.max(1.0, Math.min(1.8, 1.5 - (yearsSinceRenovation / 20)));
-  }
   
   // Floor preference (middle floors generally preferred)
   const floorRatio = property.floor / property.totalFloors;
@@ -194,7 +164,7 @@ function calculateEnhancedBuilding(property: PropertyData): number {
                     floorRatio > 0.8 ? 0.9 : // Top floors  
                     1.0; // Middle floors
   
-  const combinedScore = (ageScore * 0.4 + buildingTypeScore * 0.6) * qualityMultiplier * renovationBonus * floorScore;
+  const combinedScore = (ageScore * 0.5 + buildingTypeScore * 0.5) * floorScore;
   return Math.max(1, Math.min(10, combinedScore));
 }
 
@@ -206,46 +176,17 @@ function calculateEnhancedAmenities(property: PropertyData): number {
   const homeFeaturesScore = homeFeatures.length * 0.5;
   
   // Premium home features get extra points
-  const premiumFeatures = ['Fireplace', 'Private outdoor space', 'Washer/dryer', 'Central air', 'High ceilings'];
+  const premiumFeatures = ['Fireplace', 'Private outdoor space', 'Washer/dryer', 'Central air'];
   const premiumCount = homeFeatures.filter(feature => premiumFeatures.includes(feature)).length;
   const premiumBonus = premiumCount * 0.3;
   
   score += homeFeaturesScore + premiumBonus;
-  
-  // Parking bonus (significant in NYC)
-  if (property.hasParking) {
-    const parkingBonus = {
-      'garage': 2.0,
-      'assigned': 1.5,
-      'street': 0.5,
-      'none': 0
-    }[property.parkingType || 'none'];
-    score += parkingBonus;
-  }
-  
-  // Outdoor space bonus
-  const outdoorBonus = {
-    'garden': 2.0,
-    'rooftop': 1.8,
-    'terrace': 1.5,
-    'balcony': 1.0,
-    'none': 0
-  }[property.outdoorSpace || 'none'];
-  score += outdoorBonus;
   
   return Math.max(1, Math.min(10, score));
 }
 
 function calculateMarketContext(property: PropertyData): number {
   let score = 5; // baseline
-  
-  // Market trend impact
-  const trendScore = {
-    'hot': 8,
-    'warm': 6,
-    'cool': 4,
-    'cold': 2
-  }[property.marketTrend || 'warm'];
   
   // Price history impact
   const historyBonus = {
@@ -258,7 +199,7 @@ function calculateMarketContext(property: PropertyData): number {
   const assessmentBonus = property.assessmentRatio ? 
     Math.max(-2, Math.min(2, (0.8 - property.assessmentRatio) * 5)) : 0;
   
-  return Math.max(1, Math.min(10, trendScore + historyBonus + assessmentBonus));
+  return Math.max(1, Math.min(10, score + historyBonus + assessmentBonus));
 }
 
 function calculateLifestyle(property: PropertyData): number {
