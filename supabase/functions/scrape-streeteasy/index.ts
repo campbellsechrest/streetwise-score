@@ -129,17 +129,19 @@ async function extractPropertyData(html: string, url: string): Promise<PropertyD
   // Try OpenAI extraction first if API key is available
   if (OPENAI_API_KEY) {
     try {
-      console.log('Attempting OpenAI extraction...');
+      console.log('OPENAI_API_KEY is available, attempting OpenAI extraction...');
       const openAIResult = await extractWithOpenAI(html, address, aptNumber);
       if (openAIResult) {
-        console.log('OpenAI extraction successful:', openAIResult);
+        console.log('OpenAI extraction successful with building age:', openAIResult.buildingAge);
         return openAIResult;
+      } else {
+        console.log('OpenAI extraction returned null, falling back to regex');
       }
     } catch (error) {
-      console.log('OpenAI extraction failed, falling back to regex:', error.message);
+      console.log('OpenAI extraction failed with error, falling back to regex:', error.message);
     }
   } else {
-    console.log('No OpenAI API key available, using regex extraction');
+    console.log('No OPENAI_API_KEY found in environment, using regex extraction');
   }
   
   // Try to extract building info from JSON-LD first
@@ -421,7 +423,9 @@ function extractJSONLD(html: string): any {
 }
 
 async function extractWithOpenAI(html: string, address: string, aptNumber: string): Promise<PropertyData | null> {
+  console.log('Starting OpenAI extraction function...');
   if (!OPENAI_API_KEY) {
+    console.log('No OPENAI_API_KEY in extractWithOpenAI function');
     return null;
   }
 
@@ -491,11 +495,14 @@ Return ONLY the JSON object, no other text:`;
       }),
     });
 
+    console.log('Making OpenAI API request...');
     if (!response.ok) {
-      throw new Error(`OpenAI API error: ${response.status}`);
+      const errorText = await response.text();
+      throw new Error(`OpenAI API error: ${response.status} - ${errorText}`);
     }
 
     const data = await response.json();
+    console.log('OpenAI API response received, extracting content...');
     const extractedText = data.choices[0].message.content.trim();
     
     // Parse the JSON response
