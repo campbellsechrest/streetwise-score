@@ -1098,30 +1098,52 @@ async function extractBuildingType(html: string, address: string, url: string): 
 function extractDaysOnMarket(html: string): number {
   console.log('=== EXTRACTING DAYS ON MARKET ===');
   
-  // Look for specific HTML section containing market timing info  
-  const marketSectionMatch = html.match(/days?\s*on\s*market[^>]*>[\s\S]{0,200}/i);
+  // StreetEasy has HTML structure where "Days on market" title is separate from the number
+  // Look for the market section and extract number from nearby HTML elements
+  const marketSectionMatch = html.match(/days?\s*on\s*market[\s\S]{0,500}/i);
   if (marketSectionMatch) {
-    console.log('Found market section HTML:', marketSectionMatch[0]);
+    console.log('Found market section HTML (first 300 chars):', marketSectionMatch[0].slice(0, 300));
+    
+    // StreetEasy specific: Look for number in Body_base_gyzqw class after "Days on market"
+    const bodyTextMatch = marketSectionMatch[0].match(/class="Body_base_gyzqw"[^>]*>(\d+)/);
+    if (bodyTextMatch && bodyTextMatch[1]) {
+      const days = parseInt(bodyTextMatch[1]);
+      if (!isNaN(days) && days >= 0 && days <= 3650) {
+        console.log(`Found days on market in Body_base_gyzqw: ${days}`);
+        return days;
+      }
+    }
+    
+    // Generic approach: Look for any number within the market section
+    const numberInSectionMatch = marketSectionMatch[0].match(/>\s*(\d+)\s*<?/);
+    if (numberInSectionMatch && numberInSectionMatch[1]) {
+      const days = parseInt(numberInSectionMatch[1]);
+      if (!isNaN(days) && days >= 0 && days <= 3650) {
+        console.log(`Found days on market in section: ${days}`);
+        return days;
+      }
+    }
   }
   
   console.log('HTML sample (looking for days on market):', html.slice(0, 2000));
   
-  // StreetEasy-specific patterns for days on market - ENHANCED
+  // Enhanced patterns for various StreetEasy formats
   const daysOnMarketPatterns = [
-    // PRIORITY: StreetEasy's exact format "DAYS ON MARKET: X days"
-    /days\s*on\s*market\s*:?\s*(\d+)\s*days?/i,
-    /(\d+)\s*days\s*[<>\/\s]*days\s*on\s*market/i,
+    // StreetEasy's format where number follows after HTML tags
+    /days\s*on\s*market[\s\S]{0,200}?>\s*(\d+)/i,
     
-    // Standard patterns  
+    // Direct adjacent patterns
+    /days\s*on\s*market\s*:?\s*(\d+)\s*days?/i,
     /(\d+)\s*days?\s*on\s*(?:the\s*)?market/i,
-    /on\s*(?:the\s*)?market\s*(?:for\s*)?(\d+)\s*days?/i,
+    /market\s*time\s*:?\s*(\d+)\s*days?/i,
+    /time\s*on\s*market\s*:?\s*(\d+)\s*days?/i,
     
     // Listed/Added patterns
     /listed\s*(?:for\s*)?(\d+)\s*days?\s*ago/i,
     /added\s*(\d+)\s*days?\s*ago/i,
     /(\d+)\s*days?\s*(?:since\s*)?(?:listed|added)/i,
     
-    // StreetEasy specific classes and attributes
+    // StreetEasy specific attributes
     /data-days-on-market["\s]*[:=]["\s]*(\d+)/i,
     /days[_-]on[_-]market["\s]*[:=]["\s]*(\d+)/i,
     /market[_-]days["\s]*[:=]["\s]*(\d+)/i,
@@ -1129,8 +1151,6 @@ function extractDaysOnMarket(html: string): number {
     // Time-based patterns
     /(\d+)\s*days?\s*on\s*site/i,
     /days?\s*on\s*streeteasy[:\s]*(\d+)/i,
-    /market\s*time[:\s]*(\d+)\s*days?/i,
-    /time\s*on\s*market[:\s]*(\d+)\s*days?/i,
   ];
 
   // First try regex patterns
