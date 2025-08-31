@@ -50,11 +50,6 @@ export function PropertyForm({ onSubmit, isLoading }: PropertyFormProps) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!formData.address || !formData.price || !formData.squareFeet) {
-      return;
-    }
-
     onSubmit(formData as PropertyData);
   };
 
@@ -100,7 +95,6 @@ export function PropertyForm({ onSubmit, isLoading }: PropertyFormProps) {
                 placeholder="123 Main St, New York, NY"
                 value={formData.address || ''}
                 onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))}
-                required
               />
             </div>
             
@@ -112,7 +106,6 @@ export function PropertyForm({ onSubmit, isLoading }: PropertyFormProps) {
                 placeholder="1250000"
                 value={formData.price || ''}
                 onChange={(e) => setFormData(prev => ({ ...prev, price: Number(e.target.value) }))}
-                required
               />
             </div>
             
@@ -124,7 +117,6 @@ export function PropertyForm({ onSubmit, isLoading }: PropertyFormProps) {
                 placeholder="1200"
                 value={formData.monthlyFees || ''}
                 onChange={(e) => setFormData(prev => ({ ...prev, monthlyFees: Number(e.target.value) }))}
-                required
               />
             </div>
             
@@ -136,7 +128,6 @@ export function PropertyForm({ onSubmit, isLoading }: PropertyFormProps) {
                 placeholder="1200"
                 value={formData.squareFeet || ''}
                 onChange={(e) => setFormData(prev => ({ ...prev, squareFeet: Number(e.target.value) }))}
-                required
               />
             </div>
             
@@ -185,7 +176,6 @@ export function PropertyForm({ onSubmit, isLoading }: PropertyFormProps) {
                 placeholder="5"
                 value={formData.floor || ''}
                 onChange={(e) => setFormData(prev => ({ ...prev, floor: Number(e.target.value) }))}
-                required
               />
             </div>
             
@@ -197,7 +187,6 @@ export function PropertyForm({ onSubmit, isLoading }: PropertyFormProps) {
                 placeholder="20"
                 value={formData.totalFloors || ''}
                 onChange={(e) => setFormData(prev => ({ ...prev, totalFloors: Number(e.target.value) }))}
-                required
               />
             </div>
             
@@ -209,7 +198,6 @@ export function PropertyForm({ onSubmit, isLoading }: PropertyFormProps) {
                 placeholder="10"
                 value={formData.buildingAge || ''}
                 onChange={(e) => setFormData(prev => ({ ...prev, buildingAge: Number(e.target.value) }))}
-                required
               />
             </div>
             
