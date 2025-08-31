@@ -168,34 +168,98 @@ async function extractPropertyData(html: string, url: string): Promise<PropertyD
   // Extract maintenance fees and taxes (combine them)
   let monthlyFees = 0;
   
-  // Look for maintenance fee
-  const maintenanceMatch = html.match(/Maintenance[\s\S]*?\$([0-9,]+)(?:\/mo)?/i) || 
-                          html.match(/Common charges[\s\S]*?\$([0-9,]+)(?:\/mo)?/i) ||
-                          html.match(/\$([0-9,]+)\/mo.*maintenance/i);
-  let maintenance = 0;
-  if (maintenanceMatch) {
-    maintenance = parseInt(maintenanceMatch[1].replace(/,/g, ''));
-  }
+  console.log('=== EXTRACTING MONTHLY FEES ===');
   
-  // Look for taxes
-  const taxMatch = html.match(/Tax(?:es)?[\s\S]*?\$([0-9,]+)(?:\/mo)?/i) || 
-                  html.match(/\$([0-9,]+)\/mo.*tax/i) ||
-                  html.match(/Property tax[\s\S]*?\$([0-9,]+)(?:\/mo)?/i);
-  let taxes = 0;
-  if (taxMatch) {
-    taxes = parseInt(taxMatch[1].replace(/,/g, ''));
-  }
+  // First, try to find combined monthly charges patterns (more reliable)
+  const combinedPatterns = [
+    /Monthly charges?[:\s]*\$([0-9,]+)/i,
+    /Total monthly[:\s]*\$([0-9,]+)/i,
+    /Monthly payment[:\s]*\$([0-9,]+)/i,
+    /Monthly fee[:\s]*\$([0-9,]+)/i,
+    /Common charges?[:\s]*\$([0-9,]+)(?:\/mo)?/i
+  ];
   
-  // Combine maintenance and taxes
-  monthlyFees = maintenance + taxes;
-  
-  // If we didn't find separate values, try to find a combined monthly fee
-  if (monthlyFees === 0) {
-    const combinedMatch = html.match(/\$([0-9,]+)\/mo/);
-    if (combinedMatch) {
-      monthlyFees = parseInt(combinedMatch[1].replace(/,/g, ''));
+  let combinedFound = false;
+  for (const pattern of combinedPatterns) {
+    const match = html.match(pattern);
+    if (match) {
+      monthlyFees = parseInt(match[1].replace(/,/g, ''));
+      console.log(`Found combined monthly fees using pattern ${pattern}: $${monthlyFees}`);
+      combinedFound = true;
+      break;
     }
   }
+  
+  // If no combined pattern found, try separate maintenance and taxes
+  if (!combinedFound) {
+    console.log('No combined monthly fees found, trying separate maintenance and taxes...');
+    
+    // Look for maintenance fee with more specific patterns
+    const maintenancePatterns = [
+      /Maintenance[:\s]*\$([0-9,]+)(?:\/mo)?/i,
+      /Maintenance fee[:\s]*\$([0-9,]+)(?:\/mo)?/i,
+      /\$([0-9,]+)\/mo[^0-9]*maintenance/i
+    ];
+    
+    let maintenance = 0;
+    for (const pattern of maintenancePatterns) {
+      const match = html.match(pattern);
+      if (match) {
+        maintenance = parseInt(match[1].replace(/,/g, ''));
+        console.log(`Found maintenance using pattern ${pattern}: $${maintenance}`);
+        break;
+      }
+    }
+    
+    // Look for taxes with more specific patterns
+    const taxPatterns = [
+      /Tax(?:es)?[:\s]*\$([0-9,]+)(?:\/mo)?/i,
+      /Property tax[:\s]*\$([0-9,]+)(?:\/mo)?/i,
+      /\$([0-9,]+)\/mo[^0-9]*tax/i
+    ];
+    
+    let taxes = 0;
+    for (const pattern of taxPatterns) {
+      const match = html.match(pattern);
+      if (match) {
+        taxes = parseInt(match[1].replace(/,/g, ''));
+        console.log(`Found taxes using pattern ${pattern}: $${taxes}`);
+        break;
+      }
+    }
+    
+    console.log(`Maintenance: $${maintenance}, Taxes: $${taxes}`);
+    
+    // Only combine if both are reasonable amounts and sum makes sense
+    if (maintenance > 0 && taxes > 0 && (maintenance + taxes) < 20000) {
+      monthlyFees = maintenance + taxes;
+      console.log(`Combined maintenance + taxes: $${monthlyFees}`);
+    } else if (maintenance > 0 && taxes === 0) {
+      monthlyFees = maintenance;
+      console.log(`Using maintenance only: $${monthlyFees}`);
+    } else if (taxes > 0 && maintenance === 0) {
+      monthlyFees = taxes;
+      console.log(`Using taxes only: $${monthlyFees}`);
+    }
+  }
+  
+  // Fallback: try generic monthly pattern but be more selective
+  if (monthlyFees === 0) {
+    console.log('No specific monthly fees found, trying generic patterns...');
+    const genericMatches = html.match(/\$([0-9,]+)\/mo/g) || [];
+    
+    for (const match of genericMatches) {
+      const amount = parseInt(match.replace(/[$,\/mo]/g, ''));
+      // Only consider reasonable monthly fee amounts (not price)
+      if (amount > 500 && amount < 20000) {
+        monthlyFees = amount;
+        console.log(`Using generic monthly pattern: $${monthlyFees}`);
+        break;
+      }
+    }
+  }
+  
+  console.log(`=== FINAL MONTHLY FEES: $${monthlyFees} ===`);
 
   // Extract bedrooms and bathrooms
   let bedrooms = 1;
