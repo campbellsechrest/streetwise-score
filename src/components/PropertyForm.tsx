@@ -439,12 +439,12 @@ export function PropertyForm({ onSubmit, isLoading }: PropertyFormProps) {
             </div>
             
             <div>
-              <Label htmlFor="daysOnMarket">Days on Market (optional)</Label>
+              <Label htmlFor="daysOnMarket">Days on Market</Label>
               <Input
                 id="daysOnMarket"
                 type="number"
-                placeholder="30"
-                value={formData.daysOnMarket || ''}
+                placeholder="0"
+                value={formData.daysOnMarket !== undefined ? formData.daysOnMarket : ''}
                 onChange={(e) => setFormData(prev => ({ ...prev, daysOnMarket: Number(e.target.value) }))}
               />
             </div>

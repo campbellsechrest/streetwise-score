@@ -573,16 +573,20 @@ async function extractWithOpenAI(html: string, address: string, aptNumber: strin
 }
 
 CRITICAL - Days on Market Search Patterns:
-Look carefully for any of these patterns in the HTML:
+StreetEasy displays this prominently on the page. Look very carefully for:
+- "DAYS ON MARKET: X days" (exact StreetEasy format)  
 - "X days on market", "X days on the market"
+- "Time on market: X days", "Market time: X days"
 - "Listed X days ago", "Added X days ago"
 - "X days since listed", "X days on site"
-- "Market time: X days", "Days on StreetEasy: X"
+- "Days on StreetEasy: X"
 - "New listing" (set to 1 day)
 - "Just listed" (set to 1 day)
 - Any listing date like "Listed on March 15, 2024" (calculate days from today)
 - Data attributes like data-days-on-market="X" or similar
 - JSON-LD structured data with datePosted or datePublished
+
+IMPORTANT: This field is always displayed on StreetEasy listings, so look very carefully in the HTML.
 
 Building Type Classification Rules:
 - "prewar": Buildings constructed before 1945 (often brick, classic architecture)
@@ -1093,11 +1097,22 @@ async function extractBuildingType(html: string, address: string, url: string): 
 
 function extractDaysOnMarket(html: string): number {
   console.log('=== EXTRACTING DAYS ON MARKET ===');
+  
+  // Look for specific HTML section containing market timing info  
+  const marketSectionMatch = html.match(/days?\s*on\s*market[^>]*>[\s\S]{0,200}/i);
+  if (marketSectionMatch) {
+    console.log('Found market section HTML:', marketSectionMatch[0]);
+  }
+  
   console.log('HTML sample (looking for days on market):', html.slice(0, 2000));
   
-  // StreetEasy-specific patterns for days on market
+  // StreetEasy-specific patterns for days on market - ENHANCED
   const daysOnMarketPatterns = [
-    // Direct "X days on market" patterns
+    // PRIORITY: StreetEasy's exact format "DAYS ON MARKET: X days"
+    /days\s*on\s*market\s*:?\s*(\d+)\s*days?/i,
+    /(\d+)\s*days\s*[<>\/\s]*days\s*on\s*market/i,
+    
+    // Standard patterns  
     /(\d+)\s*days?\s*on\s*(?:the\s*)?market/i,
     /on\s*(?:the\s*)?market\s*(?:for\s*)?(\d+)\s*days?/i,
     
@@ -1115,27 +1130,32 @@ function extractDaysOnMarket(html: string): number {
     /(\d+)\s*days?\s*on\s*site/i,
     /days?\s*on\s*streeteasy[:\s]*(\d+)/i,
     /market\s*time[:\s]*(\d+)\s*days?/i,
-    
-    // New listing indicators
-    /new\s*listing/i, // Will default to 0-1 days
-    /just\s*listed/i,
-    /recently\s*listed/i,
+    /time\s*on\s*market[:\s]*(\d+)\s*days?/i,
   ];
 
   // First try regex patterns
   for (const pattern of daysOnMarketPatterns) {
     const match = html.match(pattern);
-    if (match) {
-      if (pattern.source.includes('new|just|recently')) {
-        console.log(`Found new/recent listing indicator, setting to 1 day`);
-        return 1;
-      }
-      
+    if (match && match[1]) {
       const days = parseInt(match[1]);
       if (!isNaN(days) && days >= 0 && days <= 3650) { // Sanity check: up to 10 years
         console.log(`Found days on market: ${days} using pattern ${pattern.source}`);
         return days;
       }
+    }
+  }
+
+  // Check for new listing indicators separately
+  const newListingPatterns = [
+    /new\s*listing/i,
+    /just\s*listed/i,
+    /recently\s*listed/i,
+  ];
+  
+  for (const pattern of newListingPatterns) {
+    if (html.match(pattern)) {
+      console.log(`Found new/recent listing indicator, setting to 1 day`);
+      return 1;
     }
   }
 
