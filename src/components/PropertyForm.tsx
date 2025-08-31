@@ -169,10 +169,15 @@ export function PropertyForm({ onSubmit, isLoading }: PropertyFormProps) {
               <Label htmlFor="price">Sale Price ($)</Label>
               <Input
                 id="price"
-                type="number"
-                placeholder="1250000"
-                value={formData.price || ''}
-                onChange={(e) => setFormData(prev => ({ ...prev, price: Number(e.target.value) }))}
+                type="text"
+                placeholder="1,250,000"
+                value={formData.price ? formData.price.toLocaleString() : ''}
+                onChange={(e) => {
+                  const numericValue = e.target.value.replace(/,/g, '');
+                  if (!isNaN(Number(numericValue)) || numericValue === '') {
+                    setFormData(prev => ({ ...prev, price: numericValue === '' ? 0 : Number(numericValue) }));
+                  }
+                }}
               />
             </div>
             
@@ -180,10 +185,15 @@ export function PropertyForm({ onSubmit, isLoading }: PropertyFormProps) {
               <Label htmlFor="monthlyFees">Monthly Fees ($)</Label>
               <Input
                 id="monthlyFees"
-                type="number"
-                placeholder="1200"
-                value={formData.monthlyFees || ''}
-                onChange={(e) => setFormData(prev => ({ ...prev, monthlyFees: Number(e.target.value) }))}
+                type="text"
+                placeholder="1,200"
+                value={formData.monthlyFees ? formData.monthlyFees.toLocaleString() : ''}
+                onChange={(e) => {
+                  const numericValue = e.target.value.replace(/,/g, '');
+                  if (!isNaN(Number(numericValue)) || numericValue === '') {
+                    setFormData(prev => ({ ...prev, monthlyFees: numericValue === '' ? 0 : Number(numericValue) }));
+                  }
+                }}
               />
             </div>
             
@@ -191,10 +201,15 @@ export function PropertyForm({ onSubmit, isLoading }: PropertyFormProps) {
               <Label htmlFor="squareFeet">Square Feet</Label>
               <Input
                 id="squareFeet"
-                type="number"
-                placeholder="1200"
-                value={formData.squareFeet || ''}
-                onChange={(e) => setFormData(prev => ({ ...prev, squareFeet: Number(e.target.value) }))}
+                type="text"
+                placeholder="1,200"
+                value={formData.squareFeet ? formData.squareFeet.toLocaleString() : ''}
+                onChange={(e) => {
+                  const numericValue = e.target.value.replace(/,/g, '');
+                  if (!isNaN(Number(numericValue)) || numericValue === '') {
+                    setFormData(prev => ({ ...prev, squareFeet: numericValue === '' ? 0 : Number(numericValue) }));
+                  }
+                }}
               />
             </div>
             
