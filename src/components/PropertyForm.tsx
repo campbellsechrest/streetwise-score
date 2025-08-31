@@ -9,8 +9,8 @@ import { PropertyData } from '@/utils/scoringAlgorithm';
 import { UrlInput } from '@/components/UrlInput';
 
 const AMENITIES_OPTIONS = [
-  'Doorman', 'Elevator', 'Gym', 'Pool', 'Rooftop', 'Laundry', 'Storage', 'Bike Room',
-  'Playground', 'Garden', 'Business Center', 'Live-In Super', 'Parking'
+  'Doorman', 'Elevator', 'Gym', 'Pool', 'Rooftop/Garden', 'Laundry', 'Storage', 'Bike Room',
+  'Playground', 'Live-In Super', 'Parking'
 ];
 
 const SCHOOL_DISTRICTS = [
