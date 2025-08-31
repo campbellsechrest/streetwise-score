@@ -21,6 +21,8 @@ interface PropertyData {
   bathrooms: number;
   schoolDistrict: string;
   buildingAge: number;
+  buildingType: string;
+  daysOnMarket: number;
   amenities: string[];
   walkScore?: number;
   transitScore?: number;
@@ -295,6 +297,8 @@ async function extractPropertyData(html: string, url: string): Promise<PropertyD
   // Extract building info with multiple patterns and fallbacks
   let totalFloors = 0;
   let buildingAge = 0;
+  let buildingType = 'Other';
+  let daysOnMarket = 0;
   
   // Use JSON-LD data if available
   if (jsonLdData?.yearBuilt) {
@@ -316,6 +320,12 @@ async function extractPropertyData(html: string, url: string): Promise<PropertyD
   if (buildingAge === 0) {
     buildingAge = await extractBuildingAge(html, address, url);
   }
+
+  // Extract building type from the same sources as building age
+  buildingType = await extractBuildingType(html, address, url);
+
+  // Extract days on market from listing page
+  daysOnMarket = extractDaysOnMarket(html);
 
   // Extract square footage (leave blank if not listed)
   let squareFeet = 0; // Default to 0 if not found
@@ -355,6 +365,8 @@ async function extractPropertyData(html: string, url: string): Promise<PropertyD
     bathrooms,
     schoolDistrict,
     buildingAge,
+    buildingType,
+    daysOnMarket,
     amenities,
     walkScore,
     transitScore,
@@ -612,6 +624,8 @@ Return ONLY the JSON object, no other text:`;
       bathrooms: Math.max(0.5, parseFloat(propertyData.bathrooms) || 1),
       schoolDistrict: propertyData.schoolDistrict || 'Other',
       buildingAge: Math.min(300, Math.max(0, parseInt(propertyData.buildingAge) || 50)),
+      buildingType: propertyData.buildingType || 'Other',
+      daysOnMarket: Math.max(0, parseInt(propertyData.daysOnMarket) || 0),
       amenities: Array.isArray(propertyData.amenities) ? propertyData.amenities : [],
       walkScore: Math.min(100, Math.max(0, parseInt(propertyData.walkScore) || 75)),
       transitScore: Math.min(100, Math.max(0, parseInt(propertyData.transitScore) || 75)),
@@ -898,4 +912,113 @@ async function searchBuildingInfo(address: string, searchTerms: string): Promise
     console.log('Web search error:', error.message);
     return { floors: 0, year: 0 };
   }
+}
+
+async function extractBuildingType(html: string, address: string, url: string): Promise<string> {
+  console.log('Extracting building type for:', address);
+  
+  // Common NYC building type patterns
+  const buildingTypePatterns = [
+    { pattern: /co-?op|cooperative|coop/i, type: 'Co-op' },
+    { pattern: /condo|condominium/i, type: 'Condo' },
+    { pattern: /townhouse|town house|brownstone/i, type: 'Townhouse' },
+    { pattern: /rental|rent/i, type: 'Rental' },
+    { pattern: /loft/i, type: 'Loft' },
+    { pattern: /penthouse/i, type: 'Penthouse' },
+    { pattern: /studio/i, type: 'Studio' }
+  ];
+
+  // First check the main HTML
+  for (const { pattern, type } of buildingTypePatterns) {
+    if (pattern.test(html)) {
+      console.log(`Found building type "${type}" in main HTML`);
+      return type;
+    }
+  }
+
+  // Check building page for additional context
+  if (url.includes('/building/')) {
+    const buildingUrl = url.split('/').slice(0, 5).join('/');
+    console.log('Fetching building page for type:', buildingUrl);
+
+    let buildingHtml = '';
+
+    try {
+      const response = await fetch(buildingUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+      });
+      if (!response.ok) throw new Error(`Direct building fetch failed: ${response.status}`);
+      buildingHtml = await response.text();
+      console.log('Building page direct fetch successful for type extraction');
+    } catch (err) {
+      console.log('Building page direct fetch failed for type:', (err as Error).message);
+      if (FIRECRAWL_API_KEY) {
+        try {
+          console.log('Trying Firecrawl for building page type extraction...');
+          const fcRes = await fetch('https://api.firecrawl.dev/v1/scrape', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${FIRECRAWL_API_KEY}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              url: buildingUrl,
+              formats: ['html']
+            })
+          });
+          if (!fcRes.ok) throw new Error(`Firecrawl building fetch failed: ${fcRes.status}`);
+          const fcData = await fcRes.json();
+          if (fcData?.success && fcData.data?.html) {
+            buildingHtml = fcData.data.html;
+            console.log('Firecrawl building fetch successful for type extraction');
+          }
+        } catch (fcErr) {
+          console.log('Firecrawl building fetch error for type:', (fcErr as Error).message);
+        }
+      }
+    }
+
+    if (buildingHtml) {
+      for (const { pattern, type } of buildingTypePatterns) {
+        if (pattern.test(buildingHtml)) {
+          console.log(`Found building type "${type}" in building page HTML`);
+          return type;
+        }
+      }
+    }
+  }
+
+  console.log('Could not determine building type, using default');
+  return 'Other';
+}
+
+function extractDaysOnMarket(html: string): number {
+  console.log('Extracting days on market from listing page...');
+  
+  // Common patterns for days on market on StreetEasy
+  const daysOnMarketPatterns = [
+    /(\d+)\s*days?\s*on\s*(?:the\s*)?market/i,
+    /on\s*(?:the\s*)?market\s*(?:for\s*)?(\d+)\s*days?/i,
+    /listed\s*(?:for\s*)?(\d+)\s*days?/i,
+    /(\d+)\s*days?\s*listed/i,
+    /days?\s*on\s*site[:\s]*(\d+)/i,
+    /market\s*time[:\s]*(\d+)\s*days?/i,
+    /(\d+)\s*days?\s*since\s*listed/i
+  ];
+
+  for (const pattern of daysOnMarketPatterns) {
+    const match = html.match(pattern);
+    if (match) {
+      const days = parseInt(match[1]);
+      if (days >= 0 && days <= 1000) { // Sanity check
+        console.log(`Found days on market: ${days} using pattern ${pattern.source}`);
+        return days;
+      }
+    }
+  }
+
+  console.log('Could not find days on market, defaulting to 0');
+  return 0;
 }
