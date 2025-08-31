@@ -324,6 +324,13 @@ async function extractPropertyData(html: string, url: string): Promise<PropertyD
   // Extract building type from the same sources as building age
   buildingType = await extractBuildingType(html, address, url);
 
+  // If no specific building type found, use classification based on age and amenities
+  if (buildingType === 'Other' && buildingAge > 0) {
+    console.log('=== REGEX EXTRACTION FALLBACK BUILDING TYPE CLASSIFICATION ===');
+    buildingType = classifyBuildingType(buildingAge, html, extractAmenities(html));
+    console.log(`Regex extraction classified building as: ${buildingType} based on age ${buildingAge}`);
+  }
+
   // Extract days on market from listing page
   daysOnMarket = extractDaysOnMarket(html);
 
@@ -517,9 +524,9 @@ function extractJSONLD(html: string): any {
 }
 
 async function extractWithOpenAI(html: string, address: string, aptNumber: string): Promise<PropertyData | null> {
-  console.log('Starting OpenAI extraction function...');
+  console.log('=== STARTING OPENAI EXTRACTION ===');
   if (!OPENAI_API_KEY) {
-    console.log('No OPENAI_API_KEY in extractWithOpenAI function');
+    console.log('No OPENAI_API_KEY found, will use regex fallback');
     return null;
   }
 
@@ -531,6 +538,8 @@ async function extractWithOpenAI(html: string, address: string, aptNumber: strin
       .replace(/<!--[\s\S]*?-->/g, '')
       .replace(/\s+/g, ' ')
       .substring(0, 8000); // Limit to first 8k chars to stay within context
+    
+    console.log(`Cleaned HTML length: ${cleanHtml.length} characters`);
 
     const prompt = `Extract property data from this StreetEasy listing HTML. Return a valid JSON object with these exact fields:
 
@@ -608,8 +617,10 @@ Return ONLY the JSON object, no other text:`;
     }
 
     const data = await response.json();
-    console.log('OpenAI API response received, extracting content...');
+    console.log('=== OPENAI API RESPONSE RECEIVED ===');
     const extractedText = data.choices[0].message.content.trim();
+    
+    console.log('Raw OpenAI response text:', extractedText.substring(0, 500) + '...');
     
     // Parse the JSON response
     const jsonMatch = extractedText.match(/\{[\s\S]*\}/);
@@ -617,7 +628,14 @@ Return ONLY the JSON object, no other text:`;
       throw new Error('No JSON found in OpenAI response');
     }
 
+    console.log('Extracted JSON string:', jsonMatch[0].substring(0, 300) + '...');
     const propertyData = JSON.parse(jsonMatch[0]);
+    
+    console.log('=== PARSED OPENAI PROPERTY DATA ===');
+    console.log('buildingAge:', propertyData.buildingAge);
+    console.log('buildingType:', propertyData.buildingType);
+    console.log('daysOnMarket:', propertyData.daysOnMarket);
+    console.log('Full parsed object:', JSON.stringify(propertyData, null, 2));
     
     // Validate the extracted data
     if (!propertyData || typeof propertyData !== 'object') {
@@ -643,7 +661,16 @@ Return ONLY the JSON object, no other text:`;
       transitScore: Math.min(100, Math.max(0, parseInt(propertyData.transitScore) || 75)),
       bikeScore: Math.min(100, Math.max(0, parseInt(propertyData.bikeScore) || 70))
     };
+    
+    // If buildingType is empty or "Other" but we have buildingAge, use fallback classification
+    if ((!validated.buildingType || validated.buildingType === 'Other') && validated.buildingAge > 0) {
+      console.log('OpenAI did not provide valid building type, using fallback classification...');
+      validated.buildingType = classifyBuildingType(validated.buildingAge, cleanHtml, validated.amenities);
+      console.log(`Fallback classification result: ${validated.buildingType}`);
+    }
 
+    console.log('=== FINAL OPENAI VALIDATED DATA ===');
+    console.log(`buildingAge: ${validated.buildingAge}, buildingType: ${validated.buildingType}, daysOnMarket: ${validated.daysOnMarket}`);
     console.log('OpenAI extraction validated successfully');
     return validated;
 
@@ -651,6 +678,43 @@ Return ONLY the JSON object, no other text:`;
     console.error('OpenAI extraction error:', error.message);
     return null;
   }
+}
+
+// Helper function to classify building type based on age and luxury indicators
+function classifyBuildingType(buildingAge: number, html: string = '', amenities: string[] = []): string {
+  console.log(`=== CLASSIFYING BUILDING TYPE ===`);
+  console.log(`Building age: ${buildingAge} years`);
+  
+  // Check for luxury indicators in HTML and amenities
+  const luxuryKeywords = ['luxury', 'premium', 'high-end', 'concierge', 'white glove', 'doorman', 'valet'];
+  const htmlLower = html.toLowerCase();
+  const amenitiesLower = amenities.map(a => a.toLowerCase()).join(' ');
+  const hasLuxuryIndicators = luxuryKeywords.some(keyword => 
+    htmlLower.includes(keyword) || amenitiesLower.includes(keyword)
+  );
+  
+  // Check for historic indicators
+  const historicKeywords = ['landmark', 'historic', 'heritage', 'brownstone', 'townhouse'];
+  const hasHistoricIndicators = historicKeywords.some(keyword => htmlLower.includes(keyword));
+  
+  let buildingType: string;
+  
+  if (hasHistoricIndicators) {
+    buildingType = 'historic';
+  } else if (hasLuxuryIndicators) {
+    buildingType = 'luxury';
+  } else if (buildingAge >= 80) {  // Built before 1945 (2025 - 80 = 1945)
+    buildingType = 'prewar';
+  } else if (buildingAge >= 45) {  // Built 1945-1980 (2025 - 45 = 1980)
+    buildingType = 'postwar';
+  } else if (buildingAge < 45) {   // Built after 1980
+    buildingType = 'modern';
+  } else {
+    buildingType = 'other';
+  }
+  
+  console.log(`Classified as: ${buildingType} (age: ${buildingAge}, luxury: ${hasLuxuryIndicators}, historic: ${hasHistoricIndicators})`);
+  return buildingType;
 }
 
 async function extractTotalFloors(html: string, address: string, url: string): Promise<number> {
