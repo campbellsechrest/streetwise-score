@@ -407,8 +407,10 @@ async function extractBuildingAge(html: string, address: string): Promise<number
   
   const currentYear = new Date().getFullYear();
   
-  // Multiple patterns for finding construction year
+  // Multiple patterns for finding construction year - prioritize common StreetEasy format
   const yearPatterns = [
+    /(\d{4})\s+built/gi,  // "1923 built" format from StreetEasy
+    /built\s+(\d{4})/gi,  // "built 1923"
     /built\s*in\s*(\d{4})/gi,
     /(\d{4})\s*built/gi,
     /constructed\s*in\s*(\d{4})/gi,
@@ -422,9 +424,13 @@ async function extractBuildingAge(html: string, address: string): Promise<number
     /c\.\s*(\d{4})/gi
   ];
   
+  // Add debug logging to see what we're searching
+  console.log('HTML sample (looking for year):', html.substring(0, 2000));
+  
   for (const pattern of yearPatterns) {
     const matches = html.match(pattern);
     if (matches) {
+      console.log(`Pattern ${pattern.source} matched:`, matches);
       const years = matches.map(match => {
         const num = match.match(/\d{4}/);
         return num ? parseInt(num[0]) : 0;
@@ -442,7 +448,9 @@ async function extractBuildingAge(html: string, address: string): Promise<number
     }
   }
   
-  // Fallback: try to search for building information online
+  console.log('No year patterns matched in HTML, falling back to web search');
+  
+  // Fallback: try to search for building information online only if direct extraction fails
   if (address) {
     try {
       const searchResult = await searchBuildingInfo(address, 'built constructed year history');
