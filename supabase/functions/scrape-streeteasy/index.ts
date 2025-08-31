@@ -34,6 +34,7 @@ serve(async (req) => {
 
   try {
     const { url } = await req.json();
+    console.log('=== SCRAPE STREETEASY FUNCTION CALLED ===');
     console.log('Scraping StreetEasy URL:', url);
 
     let html = '';
