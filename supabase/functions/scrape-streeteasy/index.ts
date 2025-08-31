@@ -652,60 +652,86 @@ async function extractBuildingAge(html: string, address: string, url: string): P
   
   // Try to fetch building page if unit page doesn't have the year
   if (url.includes('/building/')) {
+    const buildingUrl = url.split('/').slice(0, 5).join('/'); // Remove apartment part
+    console.log('Fetching building page:', buildingUrl);
+
+    let buildingHtml = '';
+
+    // Attempt direct fetch first
     try {
-      const buildingUrl = url.split('/').slice(0, 5).join('/'); // Remove apartment part
-      console.log('Fetching building page:', buildingUrl);
-      
       const response = await fetch(buildingUrl, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
       });
-      
-      if (response.ok) {
-        const buildingHtml = await response.text();
-        const cleanedBuildingHtml = buildingHtml.replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ');
-        
-        // Try JSON-LD on building page first
-        const buildingJsonLd = extractJSONLD(buildingHtml);
-        if (buildingJsonLd?.yearBuilt) {
-          const age = currentYear - parseInt(buildingJsonLd.yearBuilt);
-          console.log(`Found building year from building page JSON-LD: ${buildingJsonLd.yearBuilt}, age: ${age}`);
-          return age;
+      if (!response.ok) throw new Error(`Direct building fetch failed: ${response.status}`);
+      buildingHtml = await response.text();
+      console.log('Building page direct fetch successful');
+    } catch (err) {
+      console.log('Building page direct fetch failed:', (err as Error).message);
+      // Fallback to Firecrawl for building page
+      if (FIRECRAWL_API_KEY) {
+        try {
+          console.log('Trying Firecrawl for building page...');
+          const fcRes = await fetch('https://api.firecrawl.dev/v1/scrape', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${FIRECRAWL_API_KEY}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              url: buildingUrl,
+              formats: ['html']
+            })
+          });
+          if (!fcRes.ok) throw new Error(`Firecrawl building fetch failed: ${fcRes.status}`);
+          const fcData = await fcRes.json();
+          if (fcData?.success && fcData.data?.html) {
+            buildingHtml = fcData.data.html as string;
+            console.log('Firecrawl building fetch successful');
+          }
+        } catch (fcErr) {
+          console.log('Firecrawl building fetch error:', (fcErr as Error).message);
         }
-        
-        // Try patterns on building page HTML
-        for (const pattern of yearPatterns) {
-          const matches = cleanedBuildingHtml.match(pattern);
-          if (matches) {
-            console.log(`Pattern ${pattern.source} matched on building page:`, matches);
-            const years = matches.map(match => {
-              const num = match.match(/\d{4}/);
-              return num ? parseInt(num[0]) : 0;
-            }).filter(year => year >= 1800 && year <= currentYear);
-            
-            if (years.length > 0) {
-              const builtYear = Math.min(...years);
-              const age = currentYear - builtYear;
-              if (age >= 0 && age <= 300) {
-                console.log(`Found building year from building page: ${builtYear}, age: ${age}`);
-                return age;
-              }
+      } else {
+        console.log('No FIRECRAWL_API_KEY available for building page fetch');
+      }
+    }
+
+    if (buildingHtml) {
+      const cleanedBuildingHtml = buildingHtml.replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ');
+      
+      // Try JSON-LD on building page first
+      const buildingJsonLd = extractJSONLD(buildingHtml);
+      if (buildingJsonLd?.yearBuilt) {
+        const age = currentYear - parseInt(buildingJsonLd.yearBuilt);
+        console.log(`Found building year from building page JSON-LD: ${buildingJsonLd.yearBuilt}, age: ${age}`);
+        return age;
+      }
+      
+      // Try patterns on building page HTML
+      for (const pattern of yearPatterns) {
+        const matches = cleanedBuildingHtml.match(pattern);
+        if (matches) {
+          console.log(`Pattern ${pattern.source} matched on building page:`, matches);
+          const years = matches.map(match => {
+            const num = match.match(/\d{4}/);
+            return num ? parseInt(num[0]) : 0;
+          }).filter(year => year >= 1800 && year <= currentYear);
+          
+          if (years.length > 0) {
+            const builtYear = Math.min(...years);
+            const age = currentYear - builtYear;
+            if (age >= 0 && age <= 300) {
+              console.log(`Found building year from building page: ${builtYear}, age: ${age}`);
+              return age;
             }
           }
         }
       }
-    } catch (error) {
-      console.log('Building page fallback failed:', error.message);
     }
   }
-  
-  // Last resort: Heuristics for common NYC building types
-  if (html.toLowerCase().includes('prewar') || html.toLowerCase().includes('pre-war')) {
-    console.log('Found "prewar" mention, estimating age as 80 years (built ~1945)');
-    return 80;
-  }
-  
+
   console.log('No year patterns matched anywhere, falling back to web search');
   
   // Fallback: try to search for building information online only if direct extraction fails
@@ -718,8 +744,14 @@ async function extractBuildingAge(html: string, address: string, url: string): P
         return age;
       }
     } catch (error) {
-      console.log('Web search fallback failed for building age:', error.message);
+      console.log('Web search fallback failed for building age:', (error as Error).message);
     }
+  }
+
+  // Last resort: Heuristics for common NYC building types
+  if (html.toLowerCase().includes('prewar') || html.toLowerCase().includes('pre-war')) {
+    console.log('Found "prewar" mention, estimating age as 80 years (built ~1945)');
+    return 80;
   }
   
   console.log('Could not determine building age, using conservative default');
