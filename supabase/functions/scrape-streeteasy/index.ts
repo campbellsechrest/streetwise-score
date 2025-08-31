@@ -364,32 +364,67 @@ async function extractPropertyData(html: string, url: string): Promise<PropertyD
   // Extract days on market from listing page
   daysOnMarket = extractDaysOnMarket(html);
 
-  // Extract square footage - improved patterns with context filtering
+  // Extract square footage - enhanced patterns for StreetEasy format
   let squareFeet = 0; // Default to 0 if not found
+  
+  console.log('=== EXTRACTING SQUARE FOOTAGE ===');
+  
+  // Log a sample of HTML to see what we're working with
+  const htmlSample = html.substring(0, 2000);
+  console.log('HTML sample (looking for square footage):', htmlSample);
+  
   const sqftPatterns = [
-    // Look for square footage in specific contexts, avoiding small numbers
-    /(?:apartment|unit|home|property|listing)[\s\S]{0,200}?(\d{3,4}(?:,\d+)*)\s*(?:sq\.?\s*ft\.?|ft²|square feet)/i,
-    /(\d{3,4}(?:,\d+)*)\s*(?:sq\.?\s*ft\.?|ft²|square feet)[\s\S]{0,50}?(?:apartment|unit|home|property)/i,
-    // More specific StreetEasy patterns
-    /gross square feet[:\s]*(\d{3,4}(?:,\d+)*)/i,
-    /interior square feet[:\s]*(\d{3,4}(?:,\d+)*)/i,
-    // General patterns but with minimum size filtering
+    // PRIMARY: StreetEasy specific formats - "5,188 ft²" and variations
+    /(\d{1,2},\d{3})\s*ft²/i,                                    // "5,188 ft²"
+    /(\d{1,2},\d{3})\s*sq\.?\s*ft\.?/i,                         // "5,188 sq ft"
+    /(\d{3,4})\s*ft²/i,                                          // "5188 ft²" (no comma)
+    /(\d{3,4})\s*sq\.?\s*ft\.?/i,                               // "5188 sq ft"
+    
+    // SECONDARY: Context-aware patterns
+    /(?:apartment|unit|home|property|listing)[\s\S]{0,200}?(\d{1,2},\d{3})\s*(?:sq\.?\s*ft\.?|ft²|square feet)/i,
+    /(\d{1,2},\d{3})\s*(?:sq\.?\s*ft\.?|ft²|square feet)[\s\S]{0,50}?(?:apartment|unit|home|property)/i,
+    
+    // TERTIARY: Specific StreetEasy labels
+    /gross square feet[:\s]*(\d{1,2},\d{3})/i,
+    /interior square feet[:\s]*(\d{1,2},\d{3})/i,
+    
+    // FALLBACK: General patterns with size validation
     /(\d{3,4}(?:,\d+)*)\s*(?:sq\.?\s*ft\.?|ft²|square feet)/i,
   ];
 
-  for (const pattern of sqftPatterns) {
+  for (let i = 0; i < sqftPatterns.length; i++) {
+    const pattern = sqftPatterns[i];
+    console.log(`Testing pattern ${i + 1}: ${pattern}`);
+    
     const matches = html.matchAll(new RegExp(pattern.source, pattern.flags + 'g'));
     for (const match of matches) {
-      const size = parseInt(match[1].replace(/,/g, ''));
+      const rawSize = match[1];
+      const size = parseInt(rawSize.replace(/,/g, ''));
+      
+      console.log(`Pattern ${i + 1} found match: "${match[0]}" → ${size} sq ft`);
+      
       // Filter out obviously wrong sizes (too small for apartments or too big)
-      if (size >= 300 && size <= 10000) {
+      if (size >= 300 && size <= 15000) {
         squareFeet = size;
-        console.log(`Found square feet using pattern ${pattern}: ${squareFeet}`);
+        console.log(`✓ ACCEPTED square feet using pattern ${i + 1}: ${squareFeet}`);
         break;
+      } else {
+        console.log(`✗ REJECTED size ${size} (outside range 300-15000)`);
       }
     }
     if (squareFeet > 0) break;
   }
+  
+  if (squareFeet === 0) {
+    console.log('No square footage found with any pattern. Looking for specific text matches...');
+    // Try to find any mention of ft² in the HTML for debugging
+    const ftSquaredMatches = html.match(/\d+,?\d*\s*ft²/gi);
+    if (ftSquaredMatches) {
+      console.log('Found ft² mentions in HTML:', ftSquaredMatches);
+    }
+  }
+  
+  console.log(`=== FINAL SQUARE FOOTAGE: ${squareFeet} ===`);
 
   // Extract amenities
   const amenities = extractAmenities(html);
@@ -596,7 +631,7 @@ async function extractWithOpenAI(html: string, address: string, aptNumber: strin
     
     console.log(`Cleaned HTML length: ${cleanHtml.length} characters`);
 
-    const prompt = `Extract property data from this StreetEasy listing HTML. Pay special attention to finding DAYS ON MARKET information. Return a valid JSON object with these exact fields:
+    const prompt = `Extract property data from this StreetEasy listing HTML. Pay special attention to finding SQUARE FOOTAGE and DAYS ON MARKET information. Return a valid JSON object with these exact fields:
 
 {
   "address": "full address including apartment number",
@@ -604,7 +639,7 @@ async function extractWithOpenAI(html: string, address: string, aptNumber: strin
   "monthlyFees": number (maintenance + taxes combined per month),
   "floor": number (apartment floor, extract from unit number like 9A = floor 9),
   "totalFloors": number (total floors in building),
-  "squareFeet": number (0 if not listed),
+  "squareFeet": number (CRITICAL: look for "X,XXX ft²" format like "5,188 ft²" → 5188),
   "bedrooms": number,
   "bathrooms": number (can be decimal like 1.5),
   "schoolDistrict": "string (District 1, 2, 3, or Other based on NYC location)",
@@ -616,6 +651,15 @@ async function extractWithOpenAI(html: string, address: string, aptNumber: strin
   "transitScore": number (estimate 60-95 based on subway access),
   "bikeScore": number (estimate 60-90 based on bike infrastructure)
 }
+
+CRITICAL - Square Footage Search Patterns:
+StreetEasy displays square footage prominently in formats like:
+- "5,188 ft²" (most common) → extract 5188
+- "5188 ft²" (no comma) → extract 5188  
+- "5,188 sq ft" or "5,188 square feet" → extract 5188
+- Look in the main listing summary/header area
+- DO NOT extract price per square foot (e.g., "$3,275 per ft²") - that's different
+- If multiple square footage numbers exist, take the largest reasonable one (300-15000 range)
 
 CRITICAL - Days on Market Search Patterns:
 StreetEasy displays this prominently on the page. Look very carefully for:
@@ -630,8 +674,6 @@ StreetEasy displays this prominently on the page. Look very carefully for:
 - Any listing date like "Listed on March 15, 2024" (calculate days from today)
 - Data attributes like data-days-on-market="X" or similar
 - JSON-LD structured data with datePosted or datePublished
-
-IMPORTANT: This field is always displayed on StreetEasy listings, so look very carefully in the HTML.
 
 Building Type Classification Rules:
 - "prewar": Buildings constructed before 1945 (often brick, classic architecture)
