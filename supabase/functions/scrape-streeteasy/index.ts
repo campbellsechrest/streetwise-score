@@ -394,32 +394,36 @@ async function extractPropertyData(html: string, url: string): Promise<PropertyD
 function extractAmenities(html: string): string[] {
   const amenities: string[] = [];
   
+  console.log('=== EXTRACTING AMENITIES ===');
+  
   const amenityPatterns = [
     'Doorman', 'doorman',
     'Gym', 'gym', 'fitness',
     'Pool', 'pool',
-    'Rooftop', 'rooftop', 'roof deck',
+    'Rooftop', 'rooftop', 'roof deck', 'shared outdoor space', 'outdoor space',
     'Parking', 'parking',
     'Laundry', 'laundry',
-    'Concierge', 'concierge',
     'Storage', 'storage',
-    'Pet Friendly', 'pet', 'cats', 'dogs',
+    'Pet Friendly', 'pet', 'cats', 'dogs', 'pet friendly',
     'Balcony', 'balcony',
     'Elevator', 'elevator',
     'Garden', 'garden',
-    'Bike', 'bike room',
-    'Business Center', 'business center'
+    'Bike Room', 'bike room', 'bicycle storage', 'bike storage',
+    'Live-In Super', 'live-in super', 'resident manager', 'super on site',
+    'Playground', 'playground', 'children play', 'kids play area'
   ];
 
   for (const pattern of amenityPatterns) {
     if (html.toLowerCase().includes(pattern.toLowerCase())) {
       const standardAmenity = getStandardAmenity(pattern);
       if (standardAmenity && !amenities.includes(standardAmenity)) {
+        console.log(`Found amenity: ${standardAmenity} (matched pattern: ${pattern})`);
         amenities.push(standardAmenity);
       }
     }
   }
 
+  console.log(`Final extracted amenities: ${JSON.stringify(amenities)}`);
   return amenities;
 }
 
@@ -429,17 +433,18 @@ function getStandardAmenity(pattern: string): string | null {
   if (lowerPattern.includes('doorman')) return 'Doorman';
   if (lowerPattern.includes('gym') || lowerPattern.includes('fitness')) return 'Gym';
   if (lowerPattern.includes('pool')) return 'Pool';
-  if (lowerPattern.includes('rooftop') || lowerPattern.includes('roof deck')) return 'Rooftop';
+  if (lowerPattern.includes('rooftop') || lowerPattern.includes('roof deck') || 
+      lowerPattern.includes('garden') || lowerPattern.includes('shared outdoor space') ||
+      lowerPattern.includes('outdoor space')) return 'Rooftop/Garden';
   if (lowerPattern.includes('parking')) return 'Parking';
   if (lowerPattern.includes('laundry')) return 'Laundry';
-  if (lowerPattern.includes('concierge')) return 'Concierge';
   if (lowerPattern.includes('storage')) return 'Storage';
   if (lowerPattern.includes('pet') || lowerPattern.includes('cats') || lowerPattern.includes('dogs')) return 'Pet Friendly';
   if (lowerPattern.includes('balcony')) return 'Balcony';
   if (lowerPattern.includes('elevator')) return 'Elevator';
-  if (lowerPattern.includes('garden')) return 'Garden';
-  if (lowerPattern.includes('bike')) return 'Bike Storage';
-  if (lowerPattern.includes('business center')) return 'Business Center';
+  if (lowerPattern.includes('bike room') || lowerPattern.includes('bicycle storage') || lowerPattern.includes('bike storage')) return 'Bike Room';
+  if (lowerPattern.includes('live-in super') || lowerPattern.includes('resident manager') || lowerPattern.includes('super on site')) return 'Live-In Super';
+  if (lowerPattern.includes('playground') || lowerPattern.includes('children play') || lowerPattern.includes('kids play area')) return 'Playground';
   
   return null;
 }
