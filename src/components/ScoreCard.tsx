@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { ScoreBreakdown, getScoreColor, getScoreLabel } from '@/utils/scoringAlgorithm';
-import { TrendingUp, Home, GraduationCap, Building, Zap, MapPin } from 'lucide-react';
+import { TrendingUp, Home, GraduationCap, Building, Zap, MapPin, TrendingDown, Heart } from 'lucide-react';
 
 interface ScoreCardProps {
   scores: ScoreBreakdown;
@@ -16,13 +16,13 @@ export function ScoreCard({ scores, address, price }: ScoreCardProps) {
       label: 'Price Value',
       score: scores.priceValue,
       icon: TrendingUp,
-      description: 'Price per sq ft and fees'
+      description: 'Price per sq ft, fees, and market timing'
     },
     {
       label: 'Location',
       score: scores.location,
       icon: MapPin,
-      description: 'Walk & transit scores'
+      description: 'Walk, transit, safety, and proximity scores'
     },
     {
       label: 'Schools',
@@ -34,19 +34,31 @@ export function ScoreCard({ scores, address, price }: ScoreCardProps) {
       label: 'Building',
       score: scores.building,
       icon: Building,
-      description: 'Age and construction'
+      description: 'Type, age, quality, and renovation'
     },
     {
       label: 'Amenities',
       score: scores.amenities,
       icon: Zap,
-      description: 'Building features'
+      description: 'Building features, parking, and outdoor space'
     },
     {
       label: 'Neighborhood',
       score: scores.neighborhood,
       icon: Home,
-      description: 'Local attractions'
+      description: 'Local attractions and bike accessibility'
+    },
+    {
+      label: 'Market Context',
+      score: scores.marketContext,
+      icon: TrendingDown,
+      description: 'Market trends and price history'
+    },
+    {
+      label: 'Lifestyle',
+      score: scores.lifestyle,
+      icon: Heart,
+      description: 'Noise level and pet-friendliness'
     }
   ];
 
@@ -117,21 +129,25 @@ export function ScoreCard({ scores, address, price }: ScoreCardProps) {
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
             <div>
-              <h4 className="font-semibold mb-2">Scoring Factors:</h4>
+              <h4 className="font-semibold mb-2">Enhanced Scoring Factors:</h4>
               <ul className="space-y-1 text-muted-foreground">
-                <li>• Price per square foot analysis</li>
-                <li>• Monthly maintenance fees</li>
-                <li>• Walkability and transit access</li>
-                <li>• School district ratings</li>
+                <li>• Dynamic price benchmarking by neighborhood</li>
+                <li>• Building type and construction quality analysis</li>
+                <li>• Renovation year and architectural significance</li>
+                <li>• Comprehensive location scoring (safety, proximity)</li>
+                <li>• Parking availability and outdoor space value</li>
+                <li>• Market timing and price history trends</li>
               </ul>
             </div>
             <div>
-              <h4 className="font-semibold mb-2">Additional Considerations:</h4>
+              <h4 className="font-semibold mb-2">Lifestyle & Context:</h4>
               <ul className="space-y-1 text-muted-foreground">
-                <li>• Floor position and building height</li>
-                <li>• Building age and quality</li>
-                <li>• Available amenities</li>
-                <li>• Neighborhood characteristics</li>
+                <li>• Noise level and environmental factors</li>
+                <li>• Pet-friendliness for animal owners</li>
+                <li>• Market conditions and negotiation potential</li>
+                <li>• Total cost of ownership including taxes</li>
+                <li>• Floor positioning and building dynamics</li>
+                <li>• Neighborhood character and future development</li>
               </ul>
             </div>
           </div>

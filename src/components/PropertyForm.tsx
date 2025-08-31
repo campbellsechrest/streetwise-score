@@ -9,15 +9,57 @@ import { PropertyData } from '@/utils/scoringAlgorithm';
 import { UrlInput } from '@/components/UrlInput';
 
 const AMENITIES_OPTIONS = [
-  'Doorman', 'Gym', 'Pool', 'Rooftop', 'Parking', 'Laundry', 
-  'Concierge', 'Storage', 'Pet Friendly', 'Balcony', 'Elevator',
-  'Garden', 'Bike Storage', 'Business Center'
+  'Doorman', 'Elevator', 'Gym', 'Pool', 'Rooftop', 'Laundry', 'Storage', 'Bike Room',
+  'Playground', 'Garden', 'Concierge', 'Valet', 'Business Center', 'Library'
 ];
 
 const SCHOOL_DISTRICTS = [
-  'District 1', 'District 2', 'District 3', 'District 15', 
-  'District 20', 'District 22', 'Stuyvesant HS Zone', 
-  'Bronx Science Zone', 'Brooklyn Tech Zone', 'Other'
+  'District 1', 'District 2', 'District 3', 'District 15', 'District 20', 'District 22',
+  'Stuyvesant HS Zone', 'Bronx Science Zone', 'Brooklyn Tech Zone', 'Other'
+];
+
+const BUILDING_TYPES = [
+  { value: 'prewar', label: 'Pre-War (before 1945)' },
+  { value: 'postwar', label: 'Post-War (1945-1980)' },
+  { value: 'modern', label: 'Modern (1980+)' },
+  { value: 'luxury', label: 'Luxury Building' },
+  { value: 'historic', label: 'Historic/Landmark' },
+  { value: 'other', label: 'Other' }
+];
+
+const CONSTRUCTION_QUALITY = [
+  { value: 'basic', label: 'Basic' },
+  { value: 'good', label: 'Good' },
+  { value: 'luxury', label: 'Luxury' },
+  { value: 'ultra-luxury', label: 'Ultra-Luxury' }
+];
+
+const PARKING_TYPES = [
+  { value: 'none', label: 'No Parking' },
+  { value: 'street', label: 'Street Parking' },
+  { value: 'assigned', label: 'Assigned Spot' },
+  { value: 'garage', label: 'Garage' }
+];
+
+const OUTDOOR_SPACE_OPTIONS = [
+  { value: 'none', label: 'None' },
+  { value: 'balcony', label: 'Balcony' },
+  { value: 'terrace', label: 'Terrace' },
+  { value: 'garden', label: 'Garden Access' },
+  { value: 'rooftop', label: 'Rooftop Access' }
+];
+
+const MARKET_TRENDS = [
+  { value: 'hot', label: 'Hot Market' },
+  { value: 'warm', label: 'Warm Market' },
+  { value: 'cool', label: 'Cool Market' },
+  { value: 'cold', label: 'Cold Market' }
+];
+
+const PRICE_HISTORY = [
+  { value: 'stable', label: 'Stable' },
+  { value: 'increased', label: 'Recently Increased' },
+  { value: 'decreased', label: 'Recently Decreased' }
 ];
 
 interface PropertyFormProps {
@@ -32,7 +74,17 @@ export function PropertyForm({ onSubmit, isLoading }: PropertyFormProps) {
     schoolDistrict: '',
     walkScore: 70,
     transitScore: 65,
-    bikeScore: 60
+    bikeScore: 60,
+    buildingType: 'other',
+    constructionQuality: 'good',
+    hasParking: false,
+    parkingType: 'none',
+    outdoorSpace: 'none',
+    petFriendly: false,
+    marketTrend: 'warm',
+    priceHistory: 'stable',
+    safetyScore: 6,
+    noiseLevel: 5
   });
 
   const handleDataExtracted = (extractedData: PropertyData) => {
@@ -217,6 +269,196 @@ export function PropertyForm({ onSubmit, isLoading }: PropertyFormProps) {
                 </SelectContent>
               </Select>
             </div>
+            
+            {/* Enhanced Building Details */}
+            <div>
+              <Label htmlFor="buildingType">Building Type</Label>
+              <Select 
+                value={formData.buildingType || ''} 
+                onValueChange={(value) => setFormData(prev => ({ ...prev, buildingType: value as PropertyData['buildingType'] }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {BUILDING_TYPES.map((type) => (
+                    <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div>
+              <Label htmlFor="constructionQuality">Construction Quality</Label>
+              <Select 
+                value={formData.constructionQuality || ''} 
+                onValueChange={(value) => setFormData(prev => ({ ...prev, constructionQuality: value as PropertyData['constructionQuality'] }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select quality" />
+                </SelectTrigger>
+                <SelectContent>
+                  {CONSTRUCTION_QUALITY.map((quality) => (
+                    <SelectItem key={quality.value} value={quality.value}>{quality.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div>
+              <Label htmlFor="renovationYear">Renovation Year (optional)</Label>
+              <Input
+                id="renovationYear"
+                type="number"
+                placeholder="2020"
+                value={formData.renovationYear || ''}
+                onChange={(e) => setFormData(prev => ({ ...prev, renovationYear: Number(e.target.value) }))}
+              />
+            </div>
+            
+            <div>
+              <Label htmlFor="parkingType">Parking</Label>
+              <Select 
+                value={formData.parkingType || ''} 
+                onValueChange={(value) => {
+                  setFormData(prev => ({ 
+                    ...prev, 
+                    parkingType: value as PropertyData['parkingType'],
+                    hasParking: value !== 'none'
+                  }))
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select parking" />
+                </SelectTrigger>
+                <SelectContent>
+                  {PARKING_TYPES.map((parking) => (
+                    <SelectItem key={parking.value} value={parking.value}>{parking.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div>
+              <Label htmlFor="outdoorSpace">Outdoor Space</Label>
+              <Select 
+                value={formData.outdoorSpace || ''} 
+                onValueChange={(value) => setFormData(prev => ({ ...prev, outdoorSpace: value as PropertyData['outdoorSpace'] }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select outdoor space" />
+                </SelectTrigger>
+                <SelectContent>
+                  {OUTDOOR_SPACE_OPTIONS.map((space) => (
+                    <SelectItem key={space.value} value={space.value}>{space.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div>
+              <Label htmlFor="proximityToSubway">Minutes to Subway</Label>
+              <Input
+                id="proximityToSubway"
+                type="number"
+                placeholder="5"
+                value={formData.proximityToSubway || ''}
+                onChange={(e) => setFormData(prev => ({ ...prev, proximityToSubway: Number(e.target.value) }))}
+              />
+            </div>
+            
+            <div>
+              <Label htmlFor="proximityToPark">Minutes to Park</Label>
+              <Input
+                id="proximityToPark"
+                type="number"
+                placeholder="10"
+                value={formData.proximityToPark || ''}
+                onChange={(e) => setFormData(prev => ({ ...prev, proximityToPark: Number(e.target.value) }))}
+              />
+            </div>
+            
+            <div>
+              <Label htmlFor="safetyScore">Safety Score (1-10)</Label>
+              <Input
+                id="safetyScore"
+                type="number"
+                min="1"
+                max="10"
+                placeholder="6"
+                value={formData.safetyScore || ''}
+                onChange={(e) => setFormData(prev => ({ ...prev, safetyScore: Number(e.target.value) }))}
+              />
+            </div>
+            
+            <div>
+              <Label htmlFor="noiseLevel">Noise Level (1-10, lower is quieter)</Label>
+              <Input
+                id="noiseLevel"
+                type="number"
+                min="1"
+                max="10"
+                placeholder="5"
+                value={formData.noiseLevel || ''}
+                onChange={(e) => setFormData(prev => ({ ...prev, noiseLevel: Number(e.target.value) }))}
+              />
+            </div>
+            
+            <div>
+              <Label htmlFor="marketTrend">Market Trend</Label>
+              <Select 
+                value={formData.marketTrend || ''} 
+                onValueChange={(value) => setFormData(prev => ({ ...prev, marketTrend: value as PropertyData['marketTrend'] }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select trend" />
+                </SelectTrigger>
+                <SelectContent>
+                  {MARKET_TRENDS.map((trend) => (
+                    <SelectItem key={trend.value} value={trend.value}>{trend.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div>
+              <Label htmlFor="priceHistory">Price History</Label>
+              <Select 
+                value={formData.priceHistory || ''} 
+                onValueChange={(value) => setFormData(prev => ({ ...prev, priceHistory: value as PropertyData['priceHistory'] }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select history" />
+                </SelectTrigger>
+                <SelectContent>
+                  {PRICE_HISTORY.map((history) => (
+                    <SelectItem key={history.value} value={history.value}>{history.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div>
+              <Label htmlFor="daysOnMarket">Days on Market (optional)</Label>
+              <Input
+                id="daysOnMarket"
+                type="number"
+                placeholder="30"
+                value={formData.daysOnMarket || ''}
+                onChange={(e) => setFormData(prev => ({ ...prev, daysOnMarket: Number(e.target.value) }))}
+              />
+            </div>
+            
+            <div>
+              <Label htmlFor="propertyTaxes">Annual Property Taxes ($, optional)</Label>
+              <Input
+                id="propertyTaxes"
+                type="number"
+                placeholder="15000"
+                value={formData.propertyTaxes || ''}
+                onChange={(e) => setFormData(prev => ({ ...prev, propertyTaxes: Number(e.target.value) }))}
+              />
+            </div>
           </div>
           
           <div>
@@ -232,6 +474,18 @@ export function PropertyForm({ onSubmit, isLoading }: PropertyFormProps) {
                   <Label htmlFor={amenity} className="text-sm">{amenity}</Label>
                 </div>
               ))}
+            </div>
+          </div>
+          
+          <div>
+            <Label className="text-base font-semibold">Lifestyle Preferences</Label>
+            <div className="flex items-center space-x-2 mt-3">
+              <Checkbox
+                id="petFriendly"
+                checked={formData.petFriendly || false}
+                onCheckedChange={(checked) => setFormData(prev => ({ ...prev, petFriendly: checked as boolean }))}
+              />
+              <Label htmlFor="petFriendly" className="text-sm">Pet Friendly</Label>
             </div>
           </div>
           
