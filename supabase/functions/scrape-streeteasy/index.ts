@@ -24,6 +24,7 @@ interface PropertyData {
   buildingType: string;
   daysOnMarket: number;
   amenities: string[];
+  homeFeatures: string[];
   walkScore?: number;
   transitScore?: number;
   bikeScore?: number;
@@ -429,6 +430,9 @@ async function extractPropertyData(html: string, url: string): Promise<PropertyD
   // Extract amenities
   const amenities = extractAmenities(html);
 
+  // Extract home features (unit-specific)
+  const homeFeatures = extractHomeFeatures(html);
+
   // Determine school district based on neighborhood
   let schoolDistrict = 'Other';
   if (html.includes('Greenwich Village') || html.includes('Washington Square')) {
@@ -460,6 +464,7 @@ async function extractPropertyData(html: string, url: string): Promise<PropertyD
     buildingType,
     daysOnMarket,
     amenities,
+    homeFeatures,
     walkScore,
     transitScore,
     bikeScore
@@ -575,6 +580,46 @@ function estimateBikeScore(html: string): number {
   return Math.floor(Math.random() * 20) + 60; // 60-80
 }
 
+function extractHomeFeatures(html: string): string[] {
+  console.log('=== EXTRACTING HOME FEATURES (UNIT-SPECIFIC) ===');
+  
+  const homeFeatures = new Set<string>();
+  const lowerHtml = html.toLowerCase();
+  
+  // Home feature patterns (unit-specific amenities)
+  const homeFeaturePatterns: { [key: string]: string[] } = {
+    'Fireplace': ['fireplace', 'fp'],
+    'Private outdoor space': ['private outdoor space', 'private terrace', 'private balcony', 'private deck'],
+    'Washer/dryer': ['washer/dryer', 'w/d', 'washer dryer', 'laundry in unit', 'in-unit laundry'],
+    'Dishwasher': ['dishwasher', 'dw'],
+    'Central air': ['central air', 'central a/c', 'cac', 'central cooling'],
+    'Furnished': ['furnished', 'fully furnished'],
+    'Loft': ['loft', 'loft-style', 'loft space'],
+    'High ceilings': ['high ceilings', 'high ceiling', 'soaring ceilings', '10+ feet', '11 feet', '12 feet'],
+    'Exposed brick': ['exposed brick', 'brick wall', 'brick walls', 'original brick'],
+    'Hardwood floors': ['hardwood', 'hardwood floors', 'wood floors', 'oak floors'],
+    'Updated kitchen': ['updated kitchen', 'renovated kitchen', 'new kitchen', 'modern kitchen'],
+    'Updated bathroom': ['updated bathroom', 'renovated bathroom', 'new bathroom', 'modern bathroom'],
+    'Walk-in closet': ['walk-in closet', 'walk in closet', 'large closet', 'master closet'],
+    'Home office': ['home office', 'office space', 'den', 'study'],
+    'Bay windows': ['bay windows', 'bay window', 'large windows', 'oversized windows']
+  };
+
+  for (const [featureName, patterns] of Object.entries(homeFeaturePatterns)) {
+    for (const pattern of patterns) {
+      if (lowerHtml.includes(pattern)) {
+        homeFeatures.add(featureName);
+        console.log(`Found home feature: ${featureName} (matched pattern: ${pattern})`);
+        break;
+      }
+    }
+  }
+
+  const featuresArray = Array.from(homeFeatures);
+  console.log('Final extracted home features:', JSON.stringify(featuresArray));
+  return featuresArray;
+}
+
 function extractJSONLD(html: string): any {
   try {
     // Look for JSON-LD structured data
@@ -647,6 +692,7 @@ async function extractWithOpenAI(html: string, address: string, aptNumber: strin
   "buildingType": "string (must be one of: prewar, postwar, modern, luxury, historic, other)",
   "daysOnMarket": number (CRITICAL: carefully search for days the listing has been active),
   "amenities": ["array using ONLY these exact amenities: Doorman, Elevator, Gym, Pool, Rooftop/Garden, Laundry, Storage, Bike Room, Playground, Live-In Super, Parking"],
+  "homeFeatures": ["array using ONLY these exact unit-specific features: Fireplace, Private outdoor space, Washer/dryer, Dishwasher, Central air, Furnished, Loft, High ceilings, Exposed brick, Hardwood floors, Updated kitchen, Updated bathroom, Walk-in closet, Home office, Bay windows"],
   "walkScore": number (estimate 60-95 based on NYC location),
   "transitScore": number (estimate 60-95 based on subway access),
   "bikeScore": number (estimate 60-90 based on bike infrastructure)
@@ -780,6 +826,7 @@ Return ONLY the JSON object, no other text:`;
       buildingType: propertyData.buildingType || 'Other',
       daysOnMarket: Math.max(0, parseInt(propertyData.daysOnMarket) || 0),
       amenities: Array.isArray(propertyData.amenities) ? propertyData.amenities : [],
+      homeFeatures: Array.isArray(propertyData.homeFeatures) ? propertyData.homeFeatures : [],
       walkScore: Math.min(100, Math.max(0, parseInt(propertyData.walkScore) || 75)),
       transitScore: Math.min(100, Math.max(0, parseInt(propertyData.transitScore) || 75)),
       bikeScore: Math.min(100, Math.max(0, parseInt(propertyData.bikeScore) || 70))

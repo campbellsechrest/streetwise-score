@@ -10,6 +10,7 @@ export interface PropertyData {
   schoolDistrict: string;
   buildingAge: number;
   amenities: string[];
+  homeFeatures: string[];
   walkScore?: number;
   transitScore?: number;
   bikeScore?: number;
@@ -199,6 +200,17 @@ function calculateEnhancedBuilding(property: PropertyData): number {
 
 function calculateEnhancedAmenities(property: PropertyData): number {
   let score = Math.min(8, property.amenities.length + 2);
+  
+  // Home features bonus (unit-specific amenities)
+  const homeFeatures = property.homeFeatures || [];
+  const homeFeaturesScore = homeFeatures.length * 0.5;
+  
+  // Premium home features get extra points
+  const premiumFeatures = ['Fireplace', 'Private outdoor space', 'Washer/dryer', 'Central air', 'High ceilings'];
+  const premiumCount = homeFeatures.filter(feature => premiumFeatures.includes(feature)).length;
+  const premiumBonus = premiumCount * 0.3;
+  
+  score += homeFeaturesScore + premiumBonus;
   
   // Parking bonus (significant in NYC)
   if (property.hasParking) {

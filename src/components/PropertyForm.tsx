@@ -13,6 +13,12 @@ const AMENITIES_OPTIONS = [
   'Playground', 'Live-In Super', 'Parking'
 ];
 
+const HOME_FEATURES_OPTIONS = [
+  'Fireplace', 'Private outdoor space', 'Washer/dryer', 'Dishwasher', 'Central air', 
+  'Furnished', 'Loft', 'High ceilings', 'Exposed brick', 'Hardwood floors',
+  'Updated kitchen', 'Updated bathroom', 'Walk-in closet', 'Home office', 'Bay windows'
+];
+
 const SCHOOL_DISTRICTS = [
   'District 1', 'District 2', 'District 3', 'District 15', 'District 20', 'District 22',
   'Stuyvesant HS Zone', 'Bronx Science Zone', 'Brooklyn Tech Zone', 'Other'
@@ -71,6 +77,7 @@ export function PropertyForm({ onSubmit, isLoading }: PropertyFormProps) {
   const [showUrlInput, setShowUrlInput] = useState(true);
   const [formData, setFormData] = useState<Partial<PropertyData>>({
     amenities: [],
+    homeFeatures: [],
     schoolDistrict: '',
     walkScore: 70,
     transitScore: 65,
@@ -111,6 +118,15 @@ export function PropertyForm({ onSubmit, isLoading }: PropertyFormProps) {
       amenities: checked 
         ? [...(prev.amenities || []), amenity]
         : (prev.amenities || []).filter(a => a !== amenity)
+    }));
+  };
+
+  const handleHomeFeaturesChange = (feature: string, checked: boolean) => {
+    setFormData(prev => ({
+      ...prev,
+      homeFeatures: checked 
+        ? [...(prev.homeFeatures || []), feature]
+        : (prev.homeFeatures || []).filter(f => f !== feature)
     }));
   };
 
@@ -461,6 +477,22 @@ export function PropertyForm({ onSubmit, isLoading }: PropertyFormProps) {
                     onCheckedChange={(checked) => handleAmenityChange(amenity, checked as boolean)}
                   />
                   <Label htmlFor={amenity} className="text-sm">{amenity}</Label>
+                </div>
+              ))}
+            </div>
+          </div>
+          
+          <div>
+            <Label className="text-base font-semibold">Home Features</Label>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-3">
+              {HOME_FEATURES_OPTIONS.map((feature) => (
+                <div key={feature} className="flex items-center space-x-2">
+                  <Checkbox
+                    id={feature}
+                    checked={(formData.homeFeatures || []).includes(feature)}
+                    onCheckedChange={(checked) => handleHomeFeaturesChange(feature, checked as boolean)}
+                  />
+                  <Label htmlFor={feature} className="text-sm">{feature}</Label>
                 </div>
               ))}
             </div>
