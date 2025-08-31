@@ -50,7 +50,6 @@ const Index = () => {
             scores={currentScores}
             address={currentProperty.address}
             price={currentProperty.price}
-            propertyData={currentProperty}
           />
         </div>
       </div>

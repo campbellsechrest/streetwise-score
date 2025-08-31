@@ -31,16 +31,6 @@ export interface PropertyData {
   // Market context
   daysOnMarket?: number;
   priceHistory?: 'increased' | 'decreased' | 'stable';
-  priceHistoryDetails?: {
-    percentageChange?: number;
-    timeContext?: string; // e.g., "6 months", "recent"
-    analysis?: string; // OpenAI's analysis of the price pattern
-    events?: Array<{
-      date: string;
-      price: number;
-      event: string; // 'Listed', 'Sold', 'In Contract', etc.
-    }>;
-  };
   
   // Financial
   assessmentRatio?: number; // assessment value / market value
@@ -198,86 +188,18 @@ function calculateEnhancedAmenities(property: PropertyData): number {
 function calculateMarketContext(property: PropertyData): number {
   let score = 5; // baseline
   
-  // Enhanced price history analysis using detailed data
-  if (property.priceHistoryDetails) {
-    const details = property.priceHistoryDetails;
-    
-    // Percentage change impact (more nuanced than simple increased/decreased)
-    if (details.percentageChange !== undefined) {
-      if (details.percentageChange < -10) {
-        // Significant price reduction - likely good deal
-        score += 2.0;
-      } else if (details.percentageChange < -5) {
-        // Moderate price reduction
-        score += 1.0;
-      } else if (details.percentageChange > 15) {
-        // Significant price increase - potentially overpriced
-        score -= 1.5;
-      } else if (details.percentageChange > 5) {
-        // Moderate price increase - some concern
-        score -= 0.5;
-      }
-    }
-    
-    // Time context consideration
-    if (details.timeContext) {
-      const timeContext = details.timeContext.toLowerCase();
-      if (timeContext.includes('recent') || timeContext.includes('month')) {
-        // Recent changes are more significant
-        const timeFactor = 1.2;
-        if (details.percentageChange && details.percentageChange < 0) {
-          score += 0.5; // Recent price drops are particularly good
-        }
-      }
-    }
-    
-    // Number of events (market activity indicator)
-    if (details.events && details.events.length > 0) {
-      const eventCount = details.events.length;
-      if (eventCount > 3) {
-        // High activity might indicate problematic property
-        score -= 0.5;
-      } else if (eventCount === 1) {
-        // Single listing shows stability
-        score += 0.3;
-      }
-      
-      // Check for specific event patterns
-      const recentEvents = details.events.slice(-2); // Last 2 events
-      const hasRecentPriceReduction = recentEvents.some(event => 
-        event.event.toLowerCase().includes('price') && event.event.toLowerCase().includes('reduc')
-      );
-      if (hasRecentPriceReduction) {
-        score += 0.8; // Price reductions are good for buyers
-      }
-    }
-  } else {
-    // Fallback to simple price history analysis
-    const historyBonus = {
-      'stable': 0,
-      'increased': -0.5,
-      'decreased': 1.0
-    }[property.priceHistory || 'stable'];
-    score += historyBonus;
-  }
-  
-  // Days on market factor
-  if (property.daysOnMarket) {
-    if (property.daysOnMarket > 90) {
-      // Long time on market might indicate good negotiation opportunity
-      score += 0.5;
-    } else if (property.daysOnMarket < 7) {
-      // Very new listing might be competitively priced
-      score += 0.3;
-    }
-  }
+  // Price history impact
+  const historyBonus = {
+    'stable': 0,
+    'increased': -0.5, // Recently increased might be overpriced
+    'decreased': 1.0   // Price reduction could indicate good deal
+  }[property.priceHistory || 'stable'];
   
   // Assessment ratio (good indicator of value)
   const assessmentBonus = property.assessmentRatio ? 
     Math.max(-2, Math.min(2, (0.8 - property.assessmentRatio) * 5)) : 0;
-  score += assessmentBonus;
   
-  return Math.max(1, Math.min(10, score));
+  return Math.max(1, Math.min(10, score + historyBonus + assessmentBonus));
 }
 
 function calculateLifestyle(property: PropertyData): number {

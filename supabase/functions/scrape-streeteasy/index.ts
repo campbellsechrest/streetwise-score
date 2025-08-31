@@ -28,17 +28,6 @@ interface PropertyData {
   walkScore?: number;
   transitScore?: number;
   bikeScore?: number;
-  priceHistory?: 'increased' | 'decreased' | 'stable';
-  priceHistoryDetails?: {
-    percentageChange?: number;
-    timeContext?: string;
-    analysis?: string;
-    events?: Array<{
-      date: string;
-      price: number;
-      event: string;
-    }>;
-  };
 }
 
 serve(async (req) => {
@@ -687,7 +676,7 @@ async function extractWithOpenAI(html: string, address: string, aptNumber: strin
     
     console.log(`Cleaned HTML length: ${cleanHtml.length} characters`);
 
-    const prompt = `Extract property data from this StreetEasy listing HTML. Pay special attention to finding SQUARE FOOTAGE, DAYS ON MARKET, and PROPERTY HISTORY information. Return a valid JSON object with these exact fields:
+    const prompt = `Extract property data from this StreetEasy listing HTML. Pay special attention to finding SQUARE FOOTAGE and DAYS ON MARKET information. Return a valid JSON object with these exact fields:
 
 {
   "address": "full address including apartment number",
@@ -706,14 +695,7 @@ async function extractWithOpenAI(html: string, address: string, aptNumber: strin
   "homeFeatures": ["array using ONLY these exact unit-specific features: Fireplace, Private outdoor space, Washer/dryer, Dishwasher, Central air, Furnished, Loft, High ceilings, Exposed brick, Hardwood floors, Updated kitchen, Updated bathroom, Walk-in closet, Home office, Bay windows"],
   "walkScore": number (estimate 60-95 based on NYC location),
   "transitScore": number (estimate 60-95 based on subway access),
-  "bikeScore": number (estimate 60-90 based on bike infrastructure),
-  "priceHistory": "string (must be one of: increased, decreased, stable - analyze based on property history data)",
-  "priceHistoryDetails": {
-    "percentageChange": number (percentage price change from first to current listing, positive for increase, negative for decrease),
-    "timeContext": "string (describe the time period of price changes, e.g. '6 months', 'recent', '1 year')",
-    "analysis": "string (brief analysis of price pattern and market implications)",
-    "events": [{"date": "YYYY-MM-DD", "price": number, "event": "string (Listed/Sold/In Contract/Price Changed)"}] (extract from property history table if available)
-  }
+  "bikeScore": number (estimate 60-90 based on bike infrastructure)
 }
 
 CRITICAL - Square Footage Search Patterns:
@@ -738,18 +720,6 @@ StreetEasy displays this prominently on the page. Look very carefully for:
 - Any listing date like "Listed on March 15, 2024" (calculate days from today)
 - Data attributes like data-days-on-market="X" or similar
 - JSON-LD structured data with datePosted or datePublished
-
-CRITICAL - Property History Analysis:
-StreetEasy has a "Property History" section with a table showing historical data. Look for:
-- Table with columns: Date, Price, Event (Listed/Sold/In Contract/Price Changed)
-- HTML patterns like "Property History", "Price History", "Listing History"
-- Date formats: "Mar 15, 2024", "03/15/2024", "2024-03-15"
-- Price formats: "$1,450,000", "$1450000"
-- Event types: "Listed", "Sold", "In Contract", "Price reduced", "Back on market"
-- Calculate percentage change: ((current_price - original_price) / original_price) * 100
-- Determine time context based on date ranges
-- Analyze if pattern shows: "increased" (recent price increases), "decreased" (recent price reductions), "stable" (consistent pricing)
-- For analysis, consider: market conditions, time on market, price volatility, recent trends
 
 Building Type Classification Rules:
 - "prewar": Buildings constructed before 1945 (often brick, classic architecture)
@@ -859,14 +829,7 @@ Return ONLY the JSON object, no other text:`;
       homeFeatures: Array.isArray(propertyData.homeFeatures) ? propertyData.homeFeatures : [],
       walkScore: Math.min(100, Math.max(0, parseInt(propertyData.walkScore) || 75)),
       transitScore: Math.min(100, Math.max(0, parseInt(propertyData.transitScore) || 75)),
-      bikeScore: Math.min(100, Math.max(0, parseInt(propertyData.bikeScore) || 70)),
-      priceHistory: propertyData.priceHistory || 'stable',
-      priceHistoryDetails: propertyData.priceHistoryDetails || {
-        percentageChange: 0,
-        timeContext: 'unknown',
-        analysis: 'No price history data available',
-        events: []
-      }
+      bikeScore: Math.min(100, Math.max(0, parseInt(propertyData.bikeScore) || 70))
     };
     
     // If buildingType is empty or "Other" but we have buildingAge, use fallback classification
