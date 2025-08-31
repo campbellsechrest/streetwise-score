@@ -545,18 +545,30 @@ async function extractWithOpenAI(html: string, address: string, aptNumber: strin
   "bathrooms": number (can be decimal like 1.5),
   "schoolDistrict": "string (District 1, 2, 3, or Other based on NYC location)",
   "buildingAge": number (current year minus construction year),
+  "buildingType": "string (must be one of: prewar, postwar, modern, luxury, historic, other)",
+  "daysOnMarket": number (days the listing has been active, 0 if not found),
   "amenities": ["array of amenities like Doorman, Gym, Pool, etc."],
   "walkScore": number (estimate 60-95 based on NYC location),
   "transitScore": number (estimate 60-95 based on subway access),
   "bikeScore": number (estimate 60-90 based on bike infrastructure)
 }
 
+Building Type Classification Rules:
+- "prewar": Buildings constructed before 1945 (often brick, classic architecture)
+- "postwar": Buildings constructed 1945-1980 (mid-century design)
+- "modern": Buildings constructed after 1980 (contemporary design, glass/steel)
+- "luxury": High-end buildings with premium amenities (doorman, concierge, premium finishes)
+- "historic": Landmark buildings or notable historic properties
+- "other": If none of the above categories clearly apply
+
 Key patterns to look for:
 - Construction year: "1923 built", "built 1925", "built in 1930"
+- Days on market: "X days on market", "listed X days ago", "X days on site"
 - Price: "$1,450,000" format
 - Monthly fees: maintenance + taxes combined
 - Floors: "9-story", "15 floors", "story building"
 - Amenities: doorman, gym, pool, rooftop, parking, laundry, etc.
+- Luxury indicators: "luxury", "premium", "high-end", "concierge", "white glove"
 
 Address base: "${address}"
 Apartment: "${aptNumber}"
@@ -573,11 +585,11 @@ Return ONLY the JSON object, no other text:`;
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o',
+        model: 'gpt-4o-mini',
         messages: [
           {
             role: 'system',
-            content: 'You are a precise data extractor. Return only valid JSON objects with the exact structure requested.'
+            content: 'You are a precise real estate data extractor specializing in NYC properties. Analyze building characteristics carefully to determine the correct building type based on construction era and luxury features. Return only valid JSON objects with the exact structure requested.'
           },
           {
             role: 'user',
@@ -585,7 +597,7 @@ Return ONLY the JSON object, no other text:`;
           }
         ],
         temperature: 0.1,
-        max_tokens: 1000
+        max_tokens: 1200
       }),
     });
 
