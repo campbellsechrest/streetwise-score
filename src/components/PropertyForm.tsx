@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { PropertyData } from '@/utils/scoringAlgorithm';
+import { UrlInput } from '@/components/UrlInput';
 
 const AMENITIES_OPTIONS = [
   'Doorman', 'Gym', 'Pool', 'Rooftop', 'Parking', 'Laundry', 
@@ -25,6 +26,7 @@ interface PropertyFormProps {
 }
 
 export function PropertyForm({ onSubmit, isLoading }: PropertyFormProps) {
+  const [showUrlInput, setShowUrlInput] = useState(true);
   const [formData, setFormData] = useState<Partial<PropertyData>>({
     amenities: [],
     schoolDistrict: '',
@@ -32,6 +34,19 @@ export function PropertyForm({ onSubmit, isLoading }: PropertyFormProps) {
     transitScore: 65,
     bikeScore: 60
   });
+
+  const handleDataExtracted = (extractedData: PropertyData) => {
+    setFormData(extractedData);
+    setShowUrlInput(false);
+  };
+
+  const handleToggleManual = () => {
+    setShowUrlInput(false);
+  };
+
+  const handleBackToUrl = () => {
+    setShowUrlInput(true);
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,10 +67,28 @@ export function PropertyForm({ onSubmit, isLoading }: PropertyFormProps) {
     }));
   };
 
+  if (showUrlInput) {
+    return (
+      <UrlInput 
+        onDataExtracted={handleDataExtracted}
+        onToggleManual={handleToggleManual}
+      />
+    );
+  }
+
   return (
     <Card className="w-full max-w-2xl mx-auto">
       <CardHeader>
         <CardTitle className="text-2xl font-bold text-primary">Property Details</CardTitle>
+        <Button 
+          type="button" 
+          variant="outline" 
+          size="sm"
+          onClick={handleBackToUrl}
+          className="ml-auto"
+        >
+          Use URL Instead
+        </Button>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -109,7 +142,10 @@ export function PropertyForm({ onSubmit, isLoading }: PropertyFormProps) {
             
             <div>
               <Label htmlFor="bedrooms">Bedrooms</Label>
-              <Select onValueChange={(value) => setFormData(prev => ({ ...prev, bedrooms: Number(value) }))}>
+              <Select 
+                value={formData.bedrooms?.toString() || ''} 
+                onValueChange={(value) => setFormData(prev => ({ ...prev, bedrooms: Number(value) }))}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Select" />
                 </SelectTrigger>
@@ -124,7 +160,10 @@ export function PropertyForm({ onSubmit, isLoading }: PropertyFormProps) {
             
             <div>
               <Label htmlFor="bathrooms">Bathrooms</Label>
-              <Select onValueChange={(value) => setFormData(prev => ({ ...prev, bathrooms: Number(value) }))}>
+              <Select 
+                value={formData.bathrooms?.toString() || ''} 
+                onValueChange={(value) => setFormData(prev => ({ ...prev, bathrooms: Number(value) }))}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Select" />
                 </SelectTrigger>
@@ -176,7 +215,10 @@ export function PropertyForm({ onSubmit, isLoading }: PropertyFormProps) {
             
             <div>
               <Label htmlFor="schoolDistrict">School District</Label>
-              <Select onValueChange={(value) => setFormData(prev => ({ ...prev, schoolDistrict: value }))}>
+              <Select 
+                value={formData.schoolDistrict || ''} 
+                onValueChange={(value) => setFormData(prev => ({ ...prev, schoolDistrict: value }))}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Select district" />
                 </SelectTrigger>

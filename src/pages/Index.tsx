@@ -63,7 +63,7 @@ const Index = () => {
           <div className="text-center mb-8">
             <h1 className="text-4xl font-bold text-primary mb-4">Property Evaluation</h1>
             <p className="text-xl text-muted-foreground">
-              Enter your property details to get an intelligent value score
+              Enter a StreetEasy URL or property details manually to get an intelligent value score
             </p>
           </div>
           
@@ -91,7 +91,8 @@ const Index = () => {
             </h1>
             <p className="text-xl md:text-2xl text-white/90 mb-8 leading-relaxed">
               Intelligent property evaluation that analyzes StreetEasy listings using advanced 
-              algorithms. Get data-driven scores based on price, location, schools, and amenities.
+              algorithms. Simply paste a listing URL or enter details manually to get data-driven 
+              scores based on price, location, schools, and amenities.
             </p>
             <Button 
               onClick={() => setShowForm(true)}
@@ -113,7 +114,8 @@ const Index = () => {
               Comprehensive Property Analysis
             </h2>
             <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-              Our algorithm evaluates multiple factors to give you an accurate, unbiased property score
+              Our algorithm evaluates multiple factors to give you an accurate, unbiased property score. 
+              Just paste a StreetEasy URL for instant analysis.
             </p>
           </div>
 
@@ -168,7 +170,7 @@ const Index = () => {
             Ready to Evaluate Your Property?
           </h2>
           <p className="text-xl text-white/90 mb-8 max-w-2xl mx-auto">
-            Get an instant, comprehensive score that helps you make informed real estate decisions
+            Get an instant, comprehensive score from any StreetEasy listing URL that helps you make informed real estate decisions
           </p>
           <Button 
             onClick={() => setShowForm(true)}

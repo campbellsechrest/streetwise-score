@@ -1,1 +1,4 @@
 project_id = "wwajzpuhippuojsefvzr"
+
+[functions.scrape-streeteasy]
+verify_jwt = false
