@@ -538,7 +538,7 @@ function extractAmenities(html: string): string[] {
     'Parking', 'parking',
     'Laundry', 'laundry',
     'Storage', 'storage',
-    'Pet Friendly', 'pet', 'cats', 'dogs', 'pet friendly',
+    // Removed pet-related patterns as petFriendly is now handled separately
     'Balcony', 'balcony',
     'Elevator', 'elevator',
     'Garden', 'garden',
@@ -573,7 +573,7 @@ function getStandardAmenity(pattern: string): string | null {
   if (lowerPattern.includes('parking')) return 'Parking';
   if (lowerPattern.includes('laundry')) return 'Laundry';
   if (lowerPattern.includes('storage')) return 'Storage';
-  if (lowerPattern.includes('pet') || lowerPattern.includes('cats') || lowerPattern.includes('dogs')) return 'Pet Friendly';
+  // Pet Friendly is now handled as petFriendly boolean, not as amenity
   if (lowerPattern.includes('balcony')) return 'Balcony';
   if (lowerPattern.includes('elevator')) return 'Elevator';
   if (lowerPattern.includes('bike room') || lowerPattern.includes('bicycle storage') || lowerPattern.includes('bike storage')) return 'Bike Room';
@@ -712,6 +712,86 @@ function extractJSONLD(html: string): any {
   }
 }
 
+// Conservative merge function for amenities - validates AI suggestions against common amenities
+function mergeAmenitiesConservatively(baseline: string[], aiSuggested: string[]): string[] {
+  console.log('=== CONSERVATIVE AMENITIES MERGE ===');
+  console.log('Baseline amenities:', JSON.stringify(baseline));
+  console.log('AI suggested amenities:', JSON.stringify(aiSuggested));
+  
+  // Valid amenities that we accept (excluding Pet Friendly which is now a boolean)
+  const validAmenities = [
+    'Doorman', 'Elevator', 'Laundry', 'Storage', 'Bike Room', 'Live-In Super', 
+    'Rooftop/Garden', 'Gym', 'Pool', 'Parking', 'Playground'
+  ];
+  
+  // Start with validated baseline amenities
+  const result = [...baseline];
+  
+  // Only add AI suggestions that are:
+  // 1. Valid amenity names
+  // 2. Not already in baseline
+  // 3. Not suspicious (e.g., Gym when we didn't find it deterministically)
+  for (const aiAmenity of aiSuggested) {
+    if (!validAmenities.includes(aiAmenity)) {
+      console.log(`REJECTED AI amenity "${aiAmenity}" - not in valid list`);
+      continue;
+    }
+    
+    if (result.includes(aiAmenity)) {
+      console.log(`SKIPPED AI amenity "${aiAmenity}" - already in baseline`);
+      continue;
+    }
+    
+    // Be extra cautious about Gym - it's often incorrectly added
+    if (aiAmenity === 'Gym' && !baseline.includes('Gym')) {
+      console.log(`REJECTED AI amenity "Gym" - high false positive risk, not found deterministically`);
+      continue;
+    }
+    
+    console.log(`ACCEPTED AI amenity "${aiAmenity}"`);
+    result.push(aiAmenity);
+  }
+  
+  console.log('Final merged amenities:', JSON.stringify(result));
+  return result;
+}
+
+// Conservative merge function for home features - validates AI suggestions
+function mergeFeaturesConservatively(baseline: string[], aiSuggested: string[]): string[] {
+  console.log('=== CONSERVATIVE HOME FEATURES MERGE ===');
+  console.log('Baseline home features:', JSON.stringify(baseline));
+  console.log('AI suggested home features:', JSON.stringify(aiSuggested));
+  
+  // Valid home features that we accept
+  const validFeatures = [
+    'Fireplace', 'Dishwasher', 'Hardwood floors', 'Washer/dryer', 'Central air',
+    'Private outdoor space', 'Furnished', 'Loft', 'High ceilings', 'Exposed brick', 
+    'Updated kitchen', 'Updated bathroom', 'Walk-in closet', 'Home office', 'Bay windows'
+  ];
+  
+  // Start with validated baseline features
+  const result = [...baseline];
+  
+  // Only add AI suggestions that are valid and not already present
+  for (const aiFeature of aiSuggested) {
+    if (!validFeatures.includes(aiFeature)) {
+      console.log(`REJECTED AI feature "${aiFeature}" - not in valid list`);
+      continue;
+    }
+    
+    if (result.includes(aiFeature)) {
+      console.log(`SKIPPED AI feature "${aiFeature}" - already in baseline`);
+      continue;
+    }
+    
+    console.log(`ACCEPTED AI feature "${aiFeature}"`);
+    result.push(aiFeature);
+  }
+  
+  console.log('Final merged home features:', JSON.stringify(result));
+  return result;
+}
+
 async function enhanceWithOpenAI(unitHtml: string, buildingHtml: string, address: string, aptNumber: string, baseline: PropertyData): Promise<PropertyData | null> {
   console.log('=== STARTING OPENAI ENHANCEMENT ===');
   if (!OPENAI_API_KEY) {
@@ -738,116 +818,95 @@ async function enhanceWithOpenAI(unitHtml: string, buildingHtml: string, address
     console.log(`Cleaned unit HTML length: ${cleanUnitHtml.length} characters`);
     console.log(`Cleaned building HTML length: ${cleanBuildingHtml.length} characters`);
 
-    const prompt = `Analyze both the apartment listing AND building pages from StreetEasy to extract comprehensive amenities and features.
+    const prompt = `You are a PRECISE and CONSERVATIVE real estate data extractor. Extract ONLY explicitly mentioned amenities and features from StreetEasy listings.
 
-BASELINE DATA (already extracted reliably):
+BASELINE DATA (from deterministic extraction - these are reliable):
+- Address: ${baseline.address}
 - Price: $${baseline.price} (PRESERVE - very reliable)
 - Monthly Fees: $${baseline.monthlyFees} (PRESERVE if > 0 - deterministic extraction is accurate)
-- Square Feet: ${baseline.squareFeet} 
+- Square Feet: ${baseline.squareFeet} (enhance ONLY if you find clear "X,XXX ft²" format)
 - Bedrooms: ${baseline.bedrooms} (PRESERVE - reliable)
 - Bathrooms: ${baseline.bathrooms} (PRESERVE - reliable)
 - Floor: ${baseline.floor} (PRESERVE - reliable)
 - Total Floors: ${baseline.totalFloors}
 - Building Age: ${baseline.buildingAge}
 - Days on Market: ${baseline.daysOnMarket}
+- Deterministic Amenities: ${JSON.stringify(baseline.amenities)}
+- Deterministic Home Features: ${JSON.stringify(baseline.homeFeatures)}
 
-CRITICAL TASK: Extract amenities from both unit AND building pages. The building page contains comprehensive building amenities that may not appear in the unit listing.
+CRITICAL RULE: BE EXTREMELY CONSERVATIVE. Only include amenities that are EXPLICITLY STATED. Missing an amenity is better than adding a false one.
 
-Your task: Extract COMPREHENSIVE amenities/features from both pages and provide analysis. Return a valid JSON object with these exact fields:
+Your task: VALIDATE and ENHANCE the deterministic extraction with careful analysis. Return a valid JSON object:
 
 {
-  "address": "full address including apartment number",
-  "price": number (purchase price in dollars),
-  "monthlyFees": number (maintenance + taxes combined per month),
-  "floor": number (apartment floor, extract from unit number like 9A = floor 9),
-  "totalFloors": number (total floors in building),
-  "squareFeet": number (CRITICAL: look for "X,XXX ft²" format like "5,188 ft²" → 5188),
-  "bedrooms": number,
-  "bathrooms": number (can be decimal like 1.5),
-  "schoolDistrict": "string (District 1, 2, 3, or Other based on NYC location)",
-  "buildingAge": number (current year minus construction year),
+  "address": "${baseline.address}",
+  "price": ${baseline.price},
+  "monthlyFees": ${baseline.monthlyFees},
+  "floor": ${baseline.floor},
+  "totalFloors": ${baseline.totalFloors},
+  "squareFeet": number,
+  "bedrooms": ${baseline.bedrooms},
+  "bathrooms": ${baseline.bathrooms},
+  "schoolDistrict": "${baseline.schoolDistrict}",
+  "buildingAge": number,
   "buildingType": "string (must be one of: prewar, postwar, modern, luxury, historic, other)",
-  "daysOnMarket": number (CRITICAL: carefully search for days the listing has been active),
-  "amenities": ["COMPREHENSIVE array - scan BOTH unit and building HTML for building amenities using ONLY these exact terms: Doorman, Elevator, Gym, Pool, Rooftop/Garden, Laundry, Storage, Bike Room, Playground, Live-In Super, Parking"],
-  "homeFeatures": ["COMPREHENSIVE array - scan unit HTML for apartment features using ONLY these exact terms: Fireplace, Private outdoor space, Washer/dryer, Dishwasher, Central air, Furnished, Loft, High ceilings, Exposed brick, Hardwood floors, Updated kitchen, Updated bathroom, Walk-in closet, Home office, Bay windows"],
-  "petFriendly": boolean (true if building allows pets, false otherwise),
-  "walkScore": number (estimate 60-95 based on NYC location),
-  "transitScore": number (estimate 60-95 based on subway access),
-  "bikeScore": number (estimate 60-90 based on bike infrastructure),
-  "priceHistory": "stable|increasing|decreasing|volatile",
+  "daysOnMarket": number,
+  "amenities": ["VALIDATED array - only include if EXPLICITLY mentioned in building amenity sections"],
+  "homeFeatures": ["VALIDATED array - only include if EXPLICITLY mentioned in unit feature sections"],
+  "petFriendly": boolean,
+  "walkScore": ${baseline.walkScore || 85},
+  "transitScore": ${baseline.transitScore || 90},
+  "bikeScore": ${baseline.bikeScore || 75},
+  "priceHistory": "stable",
   "priceHistoryDetails": {
-    "percentageChange": number,
-    "timeContext": "string describing time period",
-    "analysis": "string with detailed price history analysis",
-    "events": ["array of significant pricing events"]
+    "percentageChange": 0,
+    "timeContext": "last 6 months",
+    "analysis": "Price information not available for detailed analysis.",
+    "events": []
   }
 }
 
-ENHANCEMENT RULES:
-- For monthlyFees: ONLY update if baseline is 0 (deterministic extraction is highly accurate)
-- For squareFeet: Try to find if baseline missed it, look for "X,XXX ft²" patterns
-- For daysOnMarket: Always extract the most accurate value from StreetEasy's display
-- For buildingAge/totalFloors: Enhance if baseline is 0 or obviously wrong
-- For amenities: ALWAYS extract comprehensive list from BOTH unit and building HTML pages - ignore baseline
-- For homeFeatures: ALWAYS extract comprehensive list from unit HTML - ignore baseline  
-- For petFriendly: Determine from building policies and pet-related amenities
-- Always add priceHistory analysis based on price change indicators
+VALIDATION PROCESS:
+1. Start with deterministic amenities as your baseline
+2. For each deterministic amenity, VERIFY it's actually mentioned in the HTML
+3. Look for additional amenities ONLY if explicitly listed in building amenity sections
+4. For home features, VERIFY each deterministic feature and look for additional unit-specific features
+5. Be EXTREMELY selective - if in doubt, exclude it
 
-AMENITIES SEARCH STRATEGY (scan BOTH unit AND building pages):
-BUILDING PAGE sections to scan:
-- Building overview and descriptions
-- Amenity lists and building features  
-- Building services and facilities
-- Photo captions showing building amenities
-- "Building amenities", "Services", "Facilities" sections
+AMENITY VALIDATION CHECKLIST (only include if you see these EXACT mentions):
+- Doorman: Look for "Doorman", "24-hour doorman", "Full-time doorman"  
+- Elevator: Look for "Elevator" in building features
+- Gym: Look for "Gym", "Fitness center", "Exercise room" - DO NOT assume from "health" or vague terms
+- Laundry: Look for "Laundry", "Laundry room", "Laundry facilities"
+- Storage: Look for "Storage", "Storage room", "Private storage"
+- Bike Room: Look for "Bike room", "Bike storage", "Bicycle storage"
+- Rooftop/Garden: Look for "Rooftop", "Roof deck", "Shared outdoor space", "Garden"
+- Live-In Super: Look for "Live-in super", "Resident manager"
 
-UNIT PAGE sections to scan:
-- Building amenities mentioned in unit listing
-- Building features referenced in marketing text
-- Shared amenities described for the unit
+HOME FEATURES VALIDATION (unit-specific only):
+- Fireplace: Look for "Fireplace" in unit description
+- Dishwasher: Look for "Dishwasher" in unit features  
+- Hardwood floors: Look for "Hardwood", "Hardwood floors"
+- Washer/dryer: Look for "Washer/dryer", "In-unit laundry"
+- Central air: Look for "Central air", "A/C", "Air conditioning"
 
-Map variations to standard terms:
-- "concierge" → "Doorman", "24-hour doorman" → "Doorman"
-- "fitness center", "health club" → "Gym" 
-- "roof deck", "rooftop terrace", "shared outdoor space" → "Rooftop/Garden"
-- "bicycle storage", "bike storage" → "Bike Room"
-- "super on site", "resident manager" → "Live-In Super"
+PET POLICY:
+- Set petFriendly to true ONLY if you see "Pet Friendly", "Pets allowed", or similar explicit statement
 
-HOME FEATURES SEARCH STRATEGY (unit page only):
-Scan unit-specific sections:
-- Unit descriptions and room details
-- Feature lists and apartment highlights
-- Photo captions showing unit interiors  
-- Apartment-specific amenities
-- Look for: "unit features", "apartment includes", "unit highlights"
-- Map variations: "wood floors" → "Hardwood floors", "renovated kitchen" → "Updated kitchen"
+UNIT PAGE HTML (scan for unit-specific features):
+${cleanUnitHtml}
 
-PET POLICY SEARCH STRATEGY (both pages):
-- Look for: "pet friendly", "pets allowed", "pet policy", "no pets", "pets ok"
-- Check building rules and policies sections
-- Look for pet-related amenities (dog run, pet wash station)
+BUILDING PAGE HTML (scan for building amenities):  
+${cleanBuildingHtml}
 
-CRITICAL - Days on Market Search Patterns:
-StreetEasy displays this prominently on the page. Look very carefully for:
-- "DAYS ON MARKET: X days" (exact StreetEasy format)  
-- "X days on market", "X days on the market"
-- "Time on market: X days", "Market time: X days"
-- "Listed X days ago", "Added X days ago"
-- "X days since listed", "X days on site"
-- "Days on StreetEasy: X"
-- "New listing" (set to 1 day)
-- "Just listed" (set to 1 day)
-- Any listing date like "Listed on March 15, 2024" (calculate days from today)
-- Data attributes like data-days-on-market="X" or similar
-- JSON-LD structured data with datePosted or datePublished
+MERGE STRATEGY - SMART VALIDATION:
+1. Preserve all reliable baseline values (price, bedrooms, bathrooms, floor)
+2. For amenities: Validate deterministic findings and add ONLY clearly mentioned ones
+3. For home features: Validate deterministic findings and add ONLY clearly mentioned unit features
+4. For missing data: Enhance ONLY if you find explicit evidence
+5. When in doubt: Exclude rather than include
 
-Building Type Classification Rules:
-- "prewar": Buildings constructed before 1945 (often brick, classic architecture)
-- "postwar": Buildings constructed 1945-1980 (mid-century design)
-- "modern": Buildings constructed after 1980 (contemporary design, glass/steel)
-- "luxury": High-end buildings with premium amenities (doorman, concierge, premium finishes)
-- "historic": Landmark buildings or notable historic properties
-- "other": If none of the above categories clearly apply
+CRITICAL: Do not add amenities based on assumptions or inferences. Only include what is explicitly stated.`;
 
 Key patterns to look for:
 - Construction year: "1923 built", "built 1925", "built in 1930"  
@@ -952,10 +1011,10 @@ Return ONLY the JSON object, no other text:`;
       buildingAge: Math.max(baseline.buildingAge, parseInt(propertyData.buildingAge) || 0), // Take the better of both
       buildingType: baseline.buildingType !== 'other' ? baseline.buildingType : (propertyData.buildingType || 'other'),
       
-      // PRIORITIZE AI for complex parsing tasks
+      // CONSERVATIVE MERGE for amenities and features - validate AI suggestions against baseline
       daysOnMarket: Math.max(0, parseInt(propertyData.daysOnMarket) || baseline.daysOnMarket),
-      amenities: Array.isArray(propertyData.amenities) && propertyData.amenities.length > 0 ? propertyData.amenities : baseline.amenities,
-      homeFeatures: Array.isArray(propertyData.homeFeatures) && propertyData.homeFeatures.length > 0 ? propertyData.homeFeatures : baseline.homeFeatures,
+      amenities: mergeAmenitiesConservatively(baseline.amenities, propertyData.amenities || []),
+      homeFeatures: mergeFeaturesConservatively(baseline.homeFeatures, propertyData.homeFeatures || []),
       petFriendly: typeof propertyData.petFriendly === 'boolean' ? propertyData.petFriendly : false,
       
       walkScore: Math.min(100, Math.max(0, parseInt(propertyData.walkScore) || baseline.walkScore)),
