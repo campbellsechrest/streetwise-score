@@ -322,13 +322,23 @@ async function extractPropertyData(html: string, url: string): Promise<PropertyD
   }
 
   // Extract building type from the same sources as building age
-  buildingType = await extractBuildingType(html, address, url);
+  const extractedBuildingType = await extractBuildingType(html, address, url);
+  console.log(`Extracted building type from HTML: ${extractedBuildingType}`);
 
-  // If no specific building type found, use classification based on age and amenities
-  if (buildingType === 'Other' && buildingAge > 0) {
-    console.log('=== REGEX EXTRACTION FALLBACK BUILDING TYPE CLASSIFICATION ===');
-    buildingType = classifyBuildingType(buildingAge, html, extractAmenities(html));
-    console.log(`Regex extraction classified building as: ${buildingType} based on age ${buildingAge}`);
+  // ALWAYS classify based on age and amenities for form compatibility
+  // The form expects: prewar, postwar, modern, luxury, historic, other
+  console.log('=== BUILDING TYPE CLASSIFICATION BASED ON AGE ===');
+  buildingType = classifyBuildingType(buildingAge, html, extractAmenities(html));
+  console.log(`Final classified building type: ${buildingType} (age: ${buildingAge}, extracted: ${extractedBuildingType})`);
+  
+  // Log the classification details for debugging
+  console.log(`Building details: age=${buildingAge}, amenities=${JSON.stringify(extractAmenities(html))}`);
+  
+  // Ensure we never return an invalid building type
+  const validTypes = ['prewar', 'postwar', 'modern', 'luxury', 'historic', 'other'];
+  if (!validTypes.includes(buildingType)) {
+    console.log(`Invalid building type "${buildingType}", defaulting to "other"`);
+    buildingType = 'other';
   }
 
   // Extract days on market from listing page
