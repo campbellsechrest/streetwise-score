@@ -130,23 +130,8 @@ async function extractPropertyData(html: string, url: string): Promise<PropertyD
     aptNumber = apartmentPart.toUpperCase();
   }
 
-  // Try OpenAI extraction first if API key is available
-  if (OPENAI_API_KEY) {
-    try {
-      console.log('OPENAI_API_KEY is available, attempting OpenAI extraction...');
-      const openAIResult = await extractWithOpenAI(html, address, aptNumber);
-      if (openAIResult) {
-        console.log('OpenAI extraction successful with building age:', openAIResult.buildingAge);
-        return openAIResult;
-      } else {
-        console.log('OpenAI extraction returned null, falling back to regex');
-      }
-    } catch (error) {
-      console.log('OpenAI extraction failed with error, falling back to regex:', error.message);
-    }
-  } else {
-    console.log('No OPENAI_API_KEY found in environment, using regex extraction');
-  }
+  // ALWAYS run deterministic parsing first - this is the reliable baseline
+  console.log('=== RUNNING DETERMINISTIC EXTRACTION (PRIMARY) ===');
   
   // Try to extract building info from JSON-LD first
   const jsonLdData = extractJSONLD(html);
@@ -450,7 +435,8 @@ async function extractPropertyData(html: string, url: string): Promise<PropertyD
   const transitScore = estimateTransitScore(html);
   const bikeScore = estimateBikeScore(html);
 
-  return {
+  // Create baseline property data from deterministic extraction
+  const baselineData: PropertyData = {
     address: `${address} #${aptNumber}`.trim(),
     price,
     monthlyFees,
@@ -469,6 +455,29 @@ async function extractPropertyData(html: string, url: string): Promise<PropertyD
     transitScore,
     bikeScore
   };
+
+  console.log('=== DETERMINISTIC EXTRACTION COMPLETE ===');
+  console.log(`Baseline results: price=$${price}, monthlyFees=$${monthlyFees}, sqft=${squareFeet}, bed=${bedrooms}, bath=${bathrooms}`);
+
+  // Use OpenAI to enhance data (fill missing values, add price history)
+  if (OPENAI_API_KEY) {
+    try {
+      console.log('=== RUNNING OPENAI ENHANCEMENT (SECONDARY) ===');
+      const enhancedData = await enhanceWithOpenAI(html, address, aptNumber, baselineData);
+      if (enhancedData) {
+        console.log('OpenAI enhancement successful');
+        return enhancedData;
+      } else {
+        console.log('OpenAI enhancement failed, using baseline data');
+      }
+    } catch (error) {
+      console.log('OpenAI enhancement error, using baseline data:', error.message);
+    }
+  } else {
+    console.log('No OPENAI_API_KEY found, using baseline deterministic data only');
+  }
+
+  return baselineData;
 }
 
 function extractAmenities(html: string): string[] {
@@ -658,10 +667,10 @@ function extractJSONLD(html: string): any {
   }
 }
 
-async function extractWithOpenAI(html: string, address: string, aptNumber: string): Promise<PropertyData | null> {
-  console.log('=== STARTING OPENAI EXTRACTION ===');
+async function enhanceWithOpenAI(html: string, address: string, aptNumber: string, baseline: PropertyData): Promise<PropertyData | null> {
+  console.log('=== STARTING OPENAI ENHANCEMENT ===');
   if (!OPENAI_API_KEY) {
-    console.log('No OPENAI_API_KEY found, will use regex fallback');
+    console.log('No OPENAI_API_KEY found, will use baseline data');
     return null;
   }
 
@@ -676,7 +685,20 @@ async function extractWithOpenAI(html: string, address: string, aptNumber: strin
     
     console.log(`Cleaned HTML length: ${cleanHtml.length} characters`);
 
-    const prompt = `Extract property data from this StreetEasy listing HTML. Pay special attention to finding SQUARE FOOTAGE and DAYS ON MARKET information. Return a valid JSON object with these exact fields:
+    const prompt = `Enhance the property data extracted from this StreetEasy listing. IMPORTANT: Only fill in missing values (0 or empty) from the baseline data - DO NOT override existing valid values unless you're absolutely certain they're wrong.
+
+Baseline data already extracted:
+- Price: $${baseline.price}
+- Monthly Fees: $${baseline.monthlyFees}
+- Square Feet: ${baseline.squareFeet}
+- Bedrooms: ${baseline.bedrooms}
+- Bathrooms: ${baseline.bathrooms}
+- Floor: ${baseline.floor}
+- Total Floors: ${baseline.totalFloors}
+- Building Age: ${baseline.buildingAge}
+- Days on Market: ${baseline.daysOnMarket}
+
+Your task: Enhance this data with any missing information and ADD price history analysis. Return a valid JSON object with these exact fields:
 
 {
   "address": "full address including apartment number",
@@ -695,17 +717,22 @@ async function extractWithOpenAI(html: string, address: string, aptNumber: strin
   "homeFeatures": ["array using ONLY these exact unit-specific features: Fireplace, Private outdoor space, Washer/dryer, Dishwasher, Central air, Furnished, Loft, High ceilings, Exposed brick, Hardwood floors, Updated kitchen, Updated bathroom, Walk-in closet, Home office, Bay windows"],
   "walkScore": number (estimate 60-95 based on NYC location),
   "transitScore": number (estimate 60-95 based on subway access),
-  "bikeScore": number (estimate 60-90 based on bike infrastructure)
+  "bikeScore": number (estimate 60-90 based on bike infrastructure),
+  "priceHistory": "stable|increasing|decreasing|volatile",
+  "priceHistoryDetails": {
+    "percentageChange": number,
+    "timeContext": "string describing time period",
+    "analysis": "string with detailed price history analysis",
+    "events": ["array of significant pricing events"]
+  }
 }
 
-CRITICAL - Square Footage Search Patterns:
-StreetEasy displays square footage prominently in formats like:
-- "5,188 ft²" (most common) → extract 5188
-- "5188 ft²" (no comma) → extract 5188  
-- "5,188 sq ft" or "5,188 square feet" → extract 5188
-- Look in the main listing summary/header area
-- DO NOT extract price per square foot (e.g., "$3,275 per ft²") - that's different
-- If multiple square footage numbers exist, take the largest reasonable one (300-15000 range)
+ENHANCEMENT RULES:
+- For monthlyFees: Only update if baseline is 0 and you find clear maintenance/HOA/tax information
+- For squareFeet: Only update if baseline is 0 and you find clear "X,XXX ft²" patterns
+- For daysOnMarket: Always try to find the most accurate value from StreetEasy's display
+- For buildingAge/totalFloors: Only update if baseline is 0 and you find construction year or floor count
+- Always add priceHistory analysis based on any price change indicators in the HTML
 
 CRITICAL - Days on Market Search Patterns:
 StreetEasy displays this prominently on the page. Look very carefully for:
@@ -811,41 +838,57 @@ Return ONLY the JSON object, no other text:`;
       throw new Error('Invalid property data structure');
     }
 
-    // Ensure required fields and reasonable values
-    const validated: PropertyData = {
-      address: propertyData.address || `${address} #${aptNumber}`.trim(),
-      price: Math.max(0, parseInt(propertyData.price) || 0),
-      monthlyFees: Math.max(0, parseInt(propertyData.monthlyFees) || 0),
-      floor: Math.max(1, parseInt(propertyData.floor) || 1),
-      totalFloors: Math.min(100, Math.max(1, parseInt(propertyData.totalFloors) || 15)),
-      squareFeet: Math.max(0, parseInt(propertyData.squareFeet) || 0),
-      bedrooms: Math.max(0, parseInt(propertyData.bedrooms) || 1),
-      bathrooms: Math.max(0.5, parseFloat(propertyData.bathrooms) || 1),
-      schoolDistrict: propertyData.schoolDistrict || 'Other',
-      buildingAge: Math.min(300, Math.max(0, parseInt(propertyData.buildingAge) || 50)),
-      buildingType: propertyData.buildingType || 'Other',
-      daysOnMarket: Math.max(0, parseInt(propertyData.daysOnMarket) || 0),
-      amenities: Array.isArray(propertyData.amenities) ? propertyData.amenities : [],
-      homeFeatures: Array.isArray(propertyData.homeFeatures) ? propertyData.homeFeatures : [],
-      walkScore: Math.min(100, Math.max(0, parseInt(propertyData.walkScore) || 75)),
-      transitScore: Math.min(100, Math.max(0, parseInt(propertyData.transitScore) || 75)),
-      bikeScore: Math.min(100, Math.max(0, parseInt(propertyData.bikeScore) || 70))
+    // Merge OpenAI enhancements with baseline data, preserving existing valid values
+    const enhanced: PropertyData & { priceHistory?: string; priceHistoryDetails?: any } = {
+      // Always preserve baseline values unless OpenAI provides better data for missing fields
+      address: baseline.address,
+      price: baseline.price > 0 ? baseline.price : Math.max(0, parseInt(propertyData.price) || 0),
+      monthlyFees: baseline.monthlyFees > 0 ? baseline.monthlyFees : Math.max(0, parseInt(propertyData.monthlyFees) || 0),
+      floor: baseline.floor > 0 ? baseline.floor : Math.max(1, parseInt(propertyData.floor) || 1),
+      totalFloors: baseline.totalFloors > 0 ? baseline.totalFloors : Math.min(100, Math.max(1, parseInt(propertyData.totalFloors) || 15)),
+      squareFeet: baseline.squareFeet > 0 ? baseline.squareFeet : Math.max(0, parseInt(propertyData.squareFeet) || 0),
+      bedrooms: baseline.bedrooms > 0 ? baseline.bedrooms : Math.max(0, parseInt(propertyData.bedrooms) || 1),
+      bathrooms: baseline.bathrooms > 0 ? baseline.bathrooms : Math.max(0.5, parseFloat(propertyData.bathrooms) || 1),
+      schoolDistrict: baseline.schoolDistrict !== 'Other' ? baseline.schoolDistrict : (propertyData.schoolDistrict || 'Other'),
+      buildingAge: baseline.buildingAge > 0 ? baseline.buildingAge : Math.min(300, Math.max(0, parseInt(propertyData.buildingAge) || 50)),
+      buildingType: baseline.buildingType !== 'other' ? baseline.buildingType : (propertyData.buildingType || 'other'),
+      // Always try to get the best daysOnMarket from OpenAI since it's hard to extract with regex
+      daysOnMarket: Math.max(0, parseInt(propertyData.daysOnMarket) || baseline.daysOnMarket),
+      amenities: Array.isArray(propertyData.amenities) && propertyData.amenities.length > 0 ? propertyData.amenities : baseline.amenities,
+      homeFeatures: Array.isArray(propertyData.homeFeatures) && propertyData.homeFeatures.length > 0 ? propertyData.homeFeatures : baseline.homeFeatures,
+      walkScore: Math.min(100, Math.max(0, parseInt(propertyData.walkScore) || baseline.walkScore)),
+      transitScore: Math.min(100, Math.max(0, parseInt(propertyData.transitScore) || baseline.transitScore)),
+      bikeScore: Math.min(100, Math.max(0, parseInt(propertyData.bikeScore) || baseline.bikeScore)),
+      // Add new price history fields
+      priceHistory: propertyData.priceHistory || 'stable',
+      priceHistoryDetails: propertyData.priceHistoryDetails || {
+        percentageChange: 0,
+        timeContext: 'recent',
+        analysis: 'No significant price changes observed.',
+        events: []
+      }
     };
     
-    // If buildingType is empty or "Other" but we have buildingAge, use fallback classification
-    if ((!validated.buildingType || validated.buildingType === 'Other') && validated.buildingAge > 0) {
-      console.log('OpenAI did not provide valid building type, using fallback classification...');
-      validated.buildingType = classifyBuildingType(validated.buildingAge, cleanHtml, validated.amenities);
-      console.log(`Fallback classification result: ${validated.buildingType}`);
+    // If buildingType is still 'other' and we have buildingAge, use fallback classification
+    if (enhanced.buildingType === 'other' && enhanced.buildingAge > 0) {
+      console.log('Using fallback building type classification...');
+      enhanced.buildingType = classifyBuildingType(enhanced.buildingAge, cleanHtml, enhanced.amenities);
+      console.log(`Fallback classification result: ${enhanced.buildingType}`);
     }
 
-    console.log('=== FINAL OPENAI VALIDATED DATA ===');
-    console.log(`buildingAge: ${validated.buildingAge}, buildingType: ${validated.buildingType}, daysOnMarket: ${validated.daysOnMarket}`);
-    console.log('OpenAI extraction validated successfully');
-    return validated;
+    console.log('=== FINAL ENHANCED DATA ===');
+    console.log(`Enhanced results: monthlyFees=$${enhanced.monthlyFees} (baseline: $${baseline.monthlyFees})`);
+    console.log(`Enhanced results: squareFeet=${enhanced.squareFeet} (baseline: ${baseline.squareFeet})`);
+    console.log(`Enhanced results: daysOnMarket=${enhanced.daysOnMarket} (baseline: ${baseline.daysOnMarket})`);
+    console.log(`Enhanced results: buildingAge=${enhanced.buildingAge}, buildingType=${enhanced.buildingType}`);
+    console.log('OpenAI enhancement completed successfully');
+    
+    // Remove the extra fields for return type compatibility
+    const { priceHistory, priceHistoryDetails, ...result } = enhanced;
+    return result;
 
   } catch (error) {
-    console.error('OpenAI extraction error:', error.message);
+    console.error('OpenAI enhancement error:', error.message);
     return null;
   }
 }
