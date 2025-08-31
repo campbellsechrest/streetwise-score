@@ -110,7 +110,7 @@ serve(async (req) => {
   }
 });
 
-async function extractPropertyData(html: string, url: string): Promise&lt;PropertyData&gt; {
+async function extractPropertyData(html: string, url: string): Promise<PropertyData> {
   // Extract address from URL or page
   const addressMatch = url.match(/\/building\/([^\/]+)/);
   let address = '';
