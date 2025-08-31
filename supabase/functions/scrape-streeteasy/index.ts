@@ -1,8 +1,9 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
-// Firecrawl API integration
+// API integrations
 const FIRECRAWL_API_KEY = Deno.env.get('FIRECRAWL_API_KEY');
+const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -87,7 +88,7 @@ serve(async (req) => {
       console.log('Firecrawl fetch successful, HTML length:', html.length);
     }
 
-    // Extract property data using regex patterns
+    // Extract property data using OpenAI first, then regex fallback
     const propertyData = await extractPropertyData(html, url);
     console.log('Extracted property data:', propertyData);
 
@@ -123,6 +124,22 @@ async function extractPropertyData(html: string, url: string): Promise<PropertyD
   
   if (apartmentPart && apartmentPart !== '') {
     aptNumber = apartmentPart.toUpperCase();
+  }
+
+  // Try OpenAI extraction first if API key is available
+  if (OPENAI_API_KEY) {
+    try {
+      console.log('Attempting OpenAI extraction...');
+      const openAIResult = await extractWithOpenAI(html, address, aptNumber);
+      if (openAIResult) {
+        console.log('OpenAI extraction successful:', openAIResult);
+        return openAIResult;
+      }
+    } catch (error) {
+      console.log('OpenAI extraction failed, falling back to regex:', error.message);
+    }
+  } else {
+    console.log('No OpenAI API key available, using regex extraction');
   }
   
   // Try to extract building info from JSON-LD first
@@ -399,6 +416,123 @@ function extractJSONLD(html: string): any {
     return null;
   } catch (error) {
     console.log('Error extracting JSON-LD:', error.message);
+  return null;
+}
+
+async function extractWithOpenAI(html: string, address: string, aptNumber: string): Promise<PropertyData | null> {
+  if (!OPENAI_API_KEY) {
+    return null;
+  }
+
+  try {
+    // Create a concise version of HTML for OpenAI (remove scripts, styles, etc.)
+    const cleanHtml = html
+      .replace(/<script[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[\s\S]*?<\/style>/gi, '')
+      .replace(/<!--[\s\S]*?-->/g, '')
+      .replace(/\s+/g, ' ')
+      .substring(0, 8000); // Limit to first 8k chars to stay within context
+
+    const prompt = `Extract property data from this StreetEasy listing HTML. Return a valid JSON object with these exact fields:
+
+{
+  "address": "full address including apartment number",
+  "price": number (purchase price in dollars),
+  "monthlyFees": number (maintenance + taxes combined per month),
+  "floor": number (apartment floor, extract from unit number like 9A = floor 9),
+  "totalFloors": number (total floors in building),
+  "squareFeet": number (0 if not listed),
+  "bedrooms": number,
+  "bathrooms": number (can be decimal like 1.5),
+  "schoolDistrict": "string (District 1, 2, 3, or Other based on NYC location)",
+  "buildingAge": number (current year minus construction year),
+  "amenities": ["array of amenities like Doorman, Gym, Pool, etc."],
+  "walkScore": number (estimate 60-95 based on NYC location),
+  "transitScore": number (estimate 60-95 based on subway access),
+  "bikeScore": number (estimate 60-90 based on bike infrastructure)
+}
+
+Key patterns to look for:
+- Construction year: "1923 built", "built 1925", "built in 1930"
+- Price: "$1,450,000" format
+- Monthly fees: maintenance + taxes combined
+- Floors: "9-story", "15 floors", "story building"
+- Amenities: doorman, gym, pool, rooftop, parking, laundry, etc.
+
+Address base: "${address}"
+Apartment: "${aptNumber}"
+
+HTML content:
+${cleanHtml}
+
+Return ONLY the JSON object, no other text:`;
+
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a precise data extractor. Return only valid JSON objects with the exact structure requested.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        temperature: 0.1,
+        max_tokens: 1000
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`OpenAI API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const extractedText = data.choices[0].message.content.trim();
+    
+    // Parse the JSON response
+    const jsonMatch = extractedText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      throw new Error('No JSON found in OpenAI response');
+    }
+
+    const propertyData = JSON.parse(jsonMatch[0]);
+    
+    // Validate the extracted data
+    if (!propertyData || typeof propertyData !== 'object') {
+      throw new Error('Invalid property data structure');
+    }
+
+    // Ensure required fields and reasonable values
+    const validated: PropertyData = {
+      address: propertyData.address || `${address} #${aptNumber}`.trim(),
+      price: Math.max(0, parseInt(propertyData.price) || 0),
+      monthlyFees: Math.max(0, parseInt(propertyData.monthlyFees) || 0),
+      floor: Math.max(1, parseInt(propertyData.floor) || 1),
+      totalFloors: Math.min(100, Math.max(1, parseInt(propertyData.totalFloors) || 15)),
+      squareFeet: Math.max(0, parseInt(propertyData.squareFeet) || 0),
+      bedrooms: Math.max(0, parseInt(propertyData.bedrooms) || 1),
+      bathrooms: Math.max(0.5, parseFloat(propertyData.bathrooms) || 1),
+      schoolDistrict: propertyData.schoolDistrict || 'Other',
+      buildingAge: Math.min(300, Math.max(0, parseInt(propertyData.buildingAge) || 50)),
+      amenities: Array.isArray(propertyData.amenities) ? propertyData.amenities : [],
+      walkScore: Math.min(100, Math.max(0, parseInt(propertyData.walkScore) || 75)),
+      transitScore: Math.min(100, Math.max(0, parseInt(propertyData.transitScore) || 75)),
+      bikeScore: Math.min(100, Math.max(0, parseInt(propertyData.bikeScore) || 70))
+    };
+
+    console.log('OpenAI extraction validated successfully');
+    return validated;
+
+  } catch (error) {
+    console.error('OpenAI extraction error:', error.message);
     return null;
   }
 }
