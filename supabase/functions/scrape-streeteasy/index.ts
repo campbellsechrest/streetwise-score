@@ -25,6 +25,7 @@ interface PropertyData {
   daysOnMarket: number;
   amenities: string[];
   homeFeatures: string[];
+  petFriendly?: boolean;
   walkScore?: number;
   transitScore?: number;
   bikeScore?: number;
@@ -459,11 +460,55 @@ async function extractPropertyData(html: string, url: string): Promise<PropertyD
   console.log('=== DETERMINISTIC EXTRACTION COMPLETE ===');
   console.log(`Baseline results: price=$${price}, monthlyFees=$${monthlyFees}, sqft=${squareFeet}, bed=${bedrooms}, bath=${bathrooms}`);
 
-  // Use OpenAI to enhance data (fill missing values, add price history)
+  // Use OpenAI to enhance data (particularly amenities and features)
   if (OPENAI_API_KEY) {
     try {
       console.log('=== RUNNING OPENAI ENHANCEMENT (SECONDARY) ===');
-      const enhancedData = await enhanceWithOpenAI(html, address, aptNumber, baselineData);
+      
+      // Fetch building page for comprehensive amenities extraction
+      const buildingUrl = `https://streeteasy.com/building/${buildingSlug}`;
+      let buildingHtml = '';
+      
+      try {
+        console.log(`Fetching building page: ${buildingUrl}`);
+        const buildingResponse = await fetch(buildingUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+          }
+        });
+        
+        if (buildingResponse.ok) {
+          buildingHtml = await buildingResponse.text();
+          console.log('Building page fetch successful, HTML length:', buildingHtml.length);
+        } else {
+          console.log('Building page direct fetch failed, trying Firecrawl...');
+          if (FIRECRAWL_API_KEY) {
+            const firecrawlResponse = await fetch('https://api.firecrawl.dev/v1/scrape', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${FIRECRAWL_API_KEY}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                url: buildingUrl,
+                formats: ['html']
+              })
+            });
+            
+            if (firecrawlResponse.ok) {
+              const firecrawlData = await firecrawlResponse.json();
+              if (firecrawlData.success && firecrawlData.data?.html) {
+                buildingHtml = firecrawlData.data.html;
+                console.log('Building page Firecrawl fetch successful');
+              }
+            }
+          }
+        }
+      } catch (buildingFetchError) {
+        console.log('Failed to fetch building page:', buildingFetchError.message);
+      }
+      
+      const enhancedData = await enhanceWithOpenAI(html, buildingHtml, address, aptNumber, baselineData);
       if (enhancedData) {
         console.log('OpenAI enhancement successful');
         return enhancedData;
@@ -667,7 +712,7 @@ function extractJSONLD(html: string): any {
   }
 }
 
-async function enhanceWithOpenAI(html: string, address: string, aptNumber: string, baseline: PropertyData): Promise<PropertyData | null> {
+async function enhanceWithOpenAI(unitHtml: string, buildingHtml: string, address: string, aptNumber: string, baseline: PropertyData): Promise<PropertyData | null> {
   console.log('=== STARTING OPENAI ENHANCEMENT ===');
   if (!OPENAI_API_KEY) {
     console.log('No OPENAI_API_KEY found, will use baseline data');
@@ -675,35 +720,40 @@ async function enhanceWithOpenAI(html: string, address: string, aptNumber: strin
   }
 
   try {
-    // Create a concise version of HTML for OpenAI (remove scripts, styles, etc.)
-    const cleanHtml = html
+    // Clean both unit and building HTML for OpenAI analysis
+    const cleanUnitHtml = unitHtml
       .replace(/<script[\s\S]*?<\/script>/gi, '')
       .replace(/<style[\s\S]*?<\/style>/gi, '')
       .replace(/<!--[\s\S]*?-->/g, '')
       .replace(/\s+/g, ' ')
-      .substring(0, 8000); // Limit to first 8k chars to stay within context
+      .substring(0, 6000); // Limit unit HTML to 6k chars
     
-    console.log(`Cleaned HTML length: ${cleanHtml.length} characters`);
+    const cleanBuildingHtml = buildingHtml
+      .replace(/<script[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[\s\S]*?<\/style>/gi, '')
+      .replace(/<!--[\s\S]*?-->/g, '')
+      .replace(/\s+/g, ' ')
+      .substring(0, 4000); // Limit building HTML to 4k chars
+    
+    console.log(`Cleaned unit HTML length: ${cleanUnitHtml.length} characters`);
+    console.log(`Cleaned building HTML length: ${cleanBuildingHtml.length} characters`);
 
-    const prompt = `Enhance the property data extracted from this StreetEasy listing. CRITICAL: Use AI to extract comprehensive amenities and home features - these require sophisticated parsing.
+    const prompt = `Analyze both the apartment listing AND building pages from StreetEasy to extract comprehensive amenities and features.
 
-Baseline data already extracted:
-- Price: $${baseline.price}
-- Monthly Fees: $${baseline.monthlyFees}
-- Square Feet: ${baseline.squareFeet}
-- Bedrooms: ${baseline.bedrooms}
-- Bathrooms: ${baseline.bathrooms}
-- Floor: ${baseline.floor}
+BASELINE DATA (already extracted reliably):
+- Price: $${baseline.price} (PRESERVE - very reliable)
+- Monthly Fees: $${baseline.monthlyFees} (PRESERVE if > 0 - deterministic extraction is accurate)
+- Square Feet: ${baseline.squareFeet} 
+- Bedrooms: ${baseline.bedrooms} (PRESERVE - reliable)
+- Bathrooms: ${baseline.bathrooms} (PRESERVE - reliable)
+- Floor: ${baseline.floor} (PRESERVE - reliable)
 - Total Floors: ${baseline.totalFloors}
 - Building Age: ${baseline.buildingAge}
 - Days on Market: ${baseline.daysOnMarket}
 
-SPECIAL FOCUS: Amenities and Home Features - scan the ENTIRE HTML for these:
-- Look in building description sections, amenity lists, feature callouts
-- Check photo captions, marketing text, and detailed descriptions
-- Find both obvious (doorman, elevator) and subtle (bike storage, roof deck) amenities
+CRITICAL TASK: Extract amenities from both unit AND building pages. The building page contains comprehensive building amenities that may not appear in the unit listing.
 
-Your task: Enhance this data with comprehensive amenities/features and ADD price history analysis. Return a valid JSON object with these exact fields:
+Your task: Extract COMPREHENSIVE amenities/features from both pages and provide analysis. Return a valid JSON object with these exact fields:
 
 {
   "address": "full address including apartment number",
@@ -718,8 +768,9 @@ Your task: Enhance this data with comprehensive amenities/features and ADD price
   "buildingAge": number (current year minus construction year),
   "buildingType": "string (must be one of: prewar, postwar, modern, luxury, historic, other)",
   "daysOnMarket": number (CRITICAL: carefully search for days the listing has been active),
-  "amenities": ["COMPREHENSIVE array - scan ALL HTML content for building amenities using ONLY these exact terms: Doorman, Elevator, Gym, Pool, Rooftop/Garden, Laundry, Storage, Bike Room, Playground, Live-In Super, Parking"],
-  "homeFeatures": ["COMPREHENSIVE array - scan ALL HTML content for unit features using ONLY these exact terms: Fireplace, Private outdoor space, Washer/dryer, Dishwasher, Central air, Furnished, Loft, High ceilings, Exposed brick, Hardwood floors, Updated kitchen, Updated bathroom, Walk-in closet, Home office, Bay windows"],
+  "amenities": ["COMPREHENSIVE array - scan BOTH unit and building HTML for building amenities using ONLY these exact terms: Doorman, Elevator, Gym, Pool, Rooftop/Garden, Laundry, Storage, Bike Room, Playground, Live-In Super, Parking"],
+  "homeFeatures": ["COMPREHENSIVE array - scan unit HTML for apartment features using ONLY these exact terms: Fireplace, Private outdoor space, Washer/dryer, Dishwasher, Central air, Furnished, Loft, High ceilings, Exposed brick, Hardwood floors, Updated kitchen, Updated bathroom, Walk-in closet, Home office, Bay windows"],
+  "petFriendly": boolean (true if building allows pets, false otherwise),
   "walkScore": number (estimate 60-95 based on NYC location),
   "transitScore": number (estimate 60-95 based on subway access),
   "bikeScore": number (estimate 60-90 based on bike infrastructure),
@@ -733,32 +784,48 @@ Your task: Enhance this data with comprehensive amenities/features and ADD price
 }
 
 ENHANCEMENT RULES:
-- For monthlyFees: Only update if baseline is 0 and you find clear maintenance/HOA/tax information
-- For squareFeet: Only update if baseline is 0 and you find clear "X,XXX ft²" patterns
-- For daysOnMarket: Always try to find the most accurate value from StreetEasy's display
-- For buildingAge/totalFloors: Only update if baseline is 0 and you find construction year or floor count
-- For amenities: ALWAYS extract comprehensive list from entire HTML - ignore baseline, use your AI parsing
-- For homeFeatures: ALWAYS extract comprehensive list from entire HTML - ignore baseline, use your AI parsing
-- Always add priceHistory analysis based on any price change indicators in the HTML
+- For monthlyFees: ONLY update if baseline is 0 (deterministic extraction is highly accurate)
+- For squareFeet: Try to find if baseline missed it, look for "X,XXX ft²" patterns
+- For daysOnMarket: Always extract the most accurate value from StreetEasy's display
+- For buildingAge/totalFloors: Enhance if baseline is 0 or obviously wrong
+- For amenities: ALWAYS extract comprehensive list from BOTH unit and building HTML pages - ignore baseline
+- For homeFeatures: ALWAYS extract comprehensive list from unit HTML - ignore baseline  
+- For petFriendly: Determine from building policies and pet-related amenities
+- Always add priceHistory analysis based on price change indicators
 
-AMENITIES SEARCH STRATEGY:
-Scan these HTML sections thoroughly:
-- Building descriptions and marketing text
-- Amenity lists and feature callouts  
-- Photo captions and image alt text
-- Detailed property descriptions
-- Building information sections
-- Look for: "building amenities", "building features", "amenities include", "services", "facilities"
-- Map variations to standard terms: "concierge" → "Doorman", "fitness center" → "Gym", "roof deck" → "Rooftop/Garden"
+AMENITIES SEARCH STRATEGY (scan BOTH unit AND building pages):
+BUILDING PAGE sections to scan:
+- Building overview and descriptions
+- Amenity lists and building features  
+- Building services and facilities
+- Photo captions showing building amenities
+- "Building amenities", "Services", "Facilities" sections
 
-HOME FEATURES SEARCH STRATEGY:
-Scan these HTML sections thoroughly:
+UNIT PAGE sections to scan:
+- Building amenities mentioned in unit listing
+- Building features referenced in marketing text
+- Shared amenities described for the unit
+
+Map variations to standard terms:
+- "concierge" → "Doorman", "24-hour doorman" → "Doorman"
+- "fitness center", "health club" → "Gym" 
+- "roof deck", "rooftop terrace", "shared outdoor space" → "Rooftop/Garden"
+- "bicycle storage", "bike storage" → "Bike Room"
+- "super on site", "resident manager" → "Live-In Super"
+
+HOME FEATURES SEARCH STRATEGY (unit page only):
+Scan unit-specific sections:
 - Unit descriptions and room details
-- Feature lists and highlights
-- Photo captions showing unit interiors
-- Apartment-specific descriptions
-- Look for: "unit features", "apartment features", "includes", "highlights"
-- Map variations: "wood floors" → "Hardwood floors", "renovated kitchen" → "Updated kitchen", "outdoor space" → "Private outdoor space"
+- Feature lists and apartment highlights
+- Photo captions showing unit interiors  
+- Apartment-specific amenities
+- Look for: "unit features", "apartment includes", "unit highlights"
+- Map variations: "wood floors" → "Hardwood floors", "renovated kitchen" → "Updated kitchen"
+
+PET POLICY SEARCH STRATEGY (both pages):
+- Look for: "pet friendly", "pets allowed", "pet policy", "no pets", "pets ok"
+- Check building rules and policies sections
+- Look for pet-related amenities (dog run, pet wash station)
 
 CRITICAL - Days on Market Search Patterns:
 StreetEasy displays this prominently on the page. Look very carefully for:
@@ -804,8 +871,11 @@ Key patterns to look for:
 Address base: "${address}"
 Apartment: "${aptNumber}"
 
-HTML content:
-${cleanHtml}
+UNIT PAGE HTML (contains apartment-specific details):
+${cleanUnitHtml}
+
+BUILDING PAGE HTML (contains comprehensive building amenities):
+${cleanBuildingHtml}
 
 Return ONLY the JSON object, no other text:`;
 
@@ -864,28 +934,34 @@ Return ONLY the JSON object, no other text:`;
       throw new Error('Invalid property data structure');
     }
 
-    // Merge OpenAI enhancements with baseline data, preserving existing valid values
+    // Smart merge strategy: preserve reliable baseline values, enhance with AI where it excels
     const enhanced: PropertyData & { priceHistory?: string; priceHistoryDetails?: any } = {
-      // Always preserve baseline values unless OpenAI provides better data for missing fields
+      // PRESERVE highly reliable deterministic extractions
       address: baseline.address,
       price: baseline.price > 0 ? baseline.price : Math.max(0, parseInt(propertyData.price) || 0),
+      // CRITICAL: Only use AI monthlyFees if deterministic extraction failed completely
       monthlyFees: baseline.monthlyFees > 0 ? baseline.monthlyFees : Math.max(0, parseInt(propertyData.monthlyFees) || 0),
       floor: baseline.floor > 0 ? baseline.floor : Math.max(1, parseInt(propertyData.floor) || 1),
-      totalFloors: baseline.totalFloors > 0 ? baseline.totalFloors : Math.min(100, Math.max(1, parseInt(propertyData.totalFloors) || 15)),
-      squareFeet: baseline.squareFeet > 0 ? baseline.squareFeet : Math.max(0, parseInt(propertyData.squareFeet) || 0),
       bedrooms: baseline.bedrooms > 0 ? baseline.bedrooms : Math.max(0, parseInt(propertyData.bedrooms) || 1),
       bathrooms: baseline.bathrooms > 0 ? baseline.bathrooms : Math.max(0.5, parseFloat(propertyData.bathrooms) || 1),
+      
+      // ENHANCE missing or uncertain values with AI
+      totalFloors: baseline.totalFloors > 0 ? baseline.totalFloors : Math.min(100, Math.max(1, parseInt(propertyData.totalFloors) || 15)),
+      squareFeet: Math.max(baseline.squareFeet, parseInt(propertyData.squareFeet) || 0), // Take the better of both
       schoolDistrict: baseline.schoolDistrict !== 'Other' ? baseline.schoolDistrict : (propertyData.schoolDistrict || 'Other'),
-      buildingAge: baseline.buildingAge > 0 ? baseline.buildingAge : Math.min(300, Math.max(0, parseInt(propertyData.buildingAge) || 50)),
+      buildingAge: Math.max(baseline.buildingAge, parseInt(propertyData.buildingAge) || 0), // Take the better of both
       buildingType: baseline.buildingType !== 'other' ? baseline.buildingType : (propertyData.buildingType || 'other'),
-      // Always try to get the best daysOnMarket from OpenAI since it's hard to extract with regex
+      
+      // PRIORITIZE AI for complex parsing tasks
       daysOnMarket: Math.max(0, parseInt(propertyData.daysOnMarket) || baseline.daysOnMarket),
-      // ALWAYS prioritize OpenAI extraction for amenities and homeFeatures - AI is much better at parsing these
-      amenities: Array.isArray(propertyData.amenities) ? propertyData.amenities : baseline.amenities,
-      homeFeatures: Array.isArray(propertyData.homeFeatures) ? propertyData.homeFeatures : baseline.homeFeatures,
+      amenities: Array.isArray(propertyData.amenities) && propertyData.amenities.length > 0 ? propertyData.amenities : baseline.amenities,
+      homeFeatures: Array.isArray(propertyData.homeFeatures) && propertyData.homeFeatures.length > 0 ? propertyData.homeFeatures : baseline.homeFeatures,
+      petFriendly: typeof propertyData.petFriendly === 'boolean' ? propertyData.petFriendly : false,
+      
       walkScore: Math.min(100, Math.max(0, parseInt(propertyData.walkScore) || baseline.walkScore)),
       transitScore: Math.min(100, Math.max(0, parseInt(propertyData.transitScore) || baseline.transitScore)),
       bikeScore: Math.min(100, Math.max(0, parseInt(propertyData.bikeScore) || baseline.bikeScore)),
+      
       // Add new price history fields
       priceHistory: propertyData.priceHistory || 'stable',
       priceHistoryDetails: propertyData.priceHistoryDetails || {
@@ -904,15 +980,16 @@ Return ONLY the JSON object, no other text:`;
     }
 
     console.log('=== FINAL ENHANCED DATA ===');
-    console.log(`Enhanced results: monthlyFees=$${enhanced.monthlyFees} (baseline: $${baseline.monthlyFees})`);
-    console.log(`Enhanced results: squareFeet=${enhanced.squareFeet} (baseline: ${baseline.squareFeet})`);
-    console.log(`Enhanced results: daysOnMarket=${enhanced.daysOnMarket} (baseline: ${baseline.daysOnMarket})`);
-    console.log(`Enhanced results: amenities=${JSON.stringify(enhanced.amenities)} (baseline: ${JSON.stringify(baseline.amenities)})`);
-    console.log(`Enhanced results: homeFeatures=${JSON.stringify(enhanced.homeFeatures)} (baseline: ${JSON.stringify(baseline.homeFeatures)})`);
+    console.log(`Enhanced results: monthlyFees=$${enhanced.monthlyFees} (baseline: $${baseline.monthlyFees}) [${enhanced.monthlyFees === baseline.monthlyFees ? 'PRESERVED' : 'ENHANCED'}]`);
+    console.log(`Enhanced results: squareFeet=${enhanced.squareFeet} (baseline: ${baseline.squareFeet}) [${enhanced.squareFeet === baseline.squareFeet ? 'PRESERVED' : 'ENHANCED'}]`);
+    console.log(`Enhanced results: daysOnMarket=${enhanced.daysOnMarket} (baseline: ${baseline.daysOnMarket}) [${enhanced.daysOnMarket === baseline.daysOnMarket ? 'PRESERVED' : 'ENHANCED'}]`);
+    console.log(`Enhanced results: amenities=${JSON.stringify(enhanced.amenities)} (baseline: ${JSON.stringify(baseline.amenities)}) [${JSON.stringify(enhanced.amenities) === JSON.stringify(baseline.amenities) ? 'PRESERVED' : 'AI_EXTRACTED'}]`);
+    console.log(`Enhanced results: homeFeatures=${JSON.stringify(enhanced.homeFeatures)} (baseline: ${JSON.stringify(baseline.homeFeatures)}) [${JSON.stringify(enhanced.homeFeatures) === JSON.stringify(baseline.homeFeatures) ? 'PRESERVED' : 'AI_EXTRACTED'}]`);
+    console.log(`Enhanced results: petFriendly=${enhanced.petFriendly} [AI_EXTRACTED]`);
     console.log(`Enhanced results: buildingAge=${enhanced.buildingAge}, buildingType=${enhanced.buildingType}`);
     console.log('OpenAI enhancement completed successfully');
     
-    // Remove the extra fields for return type compatibility
+    // Remove the extra fields for return type compatibility but keep petFriendly
     const { priceHistory, priceHistoryDetails, ...result } = enhanced;
     return result;
 
