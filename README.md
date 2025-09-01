@@ -1,8 +1,7 @@
 # 🚕 Streetwise
 Intelligent StreetEasy scraping and analysis - find out if an NYC listing is worth the price using a weighted algorithm.
 
-## Demo
-Try it now: https://campbellsechrest.github.io/streetwise-score/
+---
 
 ## Highlights
 - Multi-factor inputs for price, market context and comps, location/neighborhood, building features, and amenities.
@@ -22,11 +21,18 @@ Try it now: https://campbellsechrest.github.io/streetwise-score/
 - Build: `npm run build`
 - Preview build: `npm run preview`
 
-
 ## Project Structure
-- `src/pages/Index.tsx` — Page layout and structure
-- `src/components/PropertyForm.tsx` — Manual entry and StreetEasy URL flow
-- `src/components/ScoreCard.tsx` — Score breakdown + details
-- `src/utils/scoringAlgorithm.ts` — Factor calculation and weighting
-- `src/styles/` — UI styling
-- `supabase/functions/scrape-streeteasy/` — Edge function (uses Firecrawl + OpenAI)
+
+```
+src/
+      pages/Index.tsx              # Page layout and structure
+      components/
+          PropertyForm.tsx         # Manual entry and StreetEasy URL flow
+          ScoreCard.tsx            # Score breakdown + details
+      utils/scoringAlgorithm.ts    # Factor calculation and weighting
+      styles/                      # UI styling
+supabase/functions/
+      scrape-streeteasy/           # Edge function (uses Firecrawl + OpenAI)
+README.md
+```
+
