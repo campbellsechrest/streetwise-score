@@ -71,3 +71,12 @@ Yes, you can!
 To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
 
 Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+
+## Releases
+
+Automated release workflow is enabled on `main`:
+
+- Push to `main` triggers auto-tagging (patch by default).
+- Tag pushes trigger a GitHub Release with generated notes.
+
+You can also manually run the "Solo Release" workflow in Actions and choose the bump level (patch/minor/major).
