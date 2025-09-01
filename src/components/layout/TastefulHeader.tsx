@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 export function TastefulHeader() {
@@ -24,7 +24,7 @@ export function TastefulHeader() {
     <header className="t-site-header" id="top">
       <div className="t-container t-header-inner">
         <Link to="/" className="t-brand" aria-label="Homepage" onClick={() => setOpen(false)}>
-          <img src="/favicon.svg" alt="" className="t-brand-mark" />
+          <img src={import.meta.env.BASE_URL + 'favicon.svg'} alt="" className="t-brand-mark" />
           <span className="t-brand-name">Streetwise</span>
         </Link>
         <button
