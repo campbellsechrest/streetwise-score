@@ -17,9 +17,10 @@ All colors MUST be HSL.
     --popover: 0 0% 100%;
     --popover-foreground: 215 25% 15%;
 
-    --primary: 195 85% 45%;
+    /* Tasteful brand (purple) */
+    --primary: 262 83% 62%;
     --primary-foreground: 0 0% 98%;
-    --primary-glow: 195 85% 55%;
+    --primary-glow: 262 83% 72%;
     
     --secondary: 210 20% 94%;
     --secondary-foreground: 215 25% 15%;
@@ -46,13 +47,13 @@ All colors MUST be HSL.
 
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
-    --ring: 195 85% 45%;
+    --ring: 262 83% 62%;
 
     --radius: 0.5rem;
 
     /* Gradients */
     --gradient-primary: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary-glow)));
-    --gradient-hero: linear-gradient(135deg, hsl(195 85% 45%), hsl(160 70% 50%));
+    --gradient-hero: linear-gradient(135deg, hsl(262 83% 62%), hsl(160 70% 50%));
     --gradient-card: linear-gradient(145deg, hsl(0 0% 100%), hsl(210 20% 98%));
     
     /* Shadows */
@@ -86,9 +87,9 @@ All colors MUST be HSL.
     --popover: 215 25% 10%;
     --popover-foreground: 210 20% 95%;
 
-    --primary: 195 85% 55%;
+    --primary: 262 83% 68%;
     --primary-foreground: 215 25% 8%;
-    --primary-glow: 195 85% 65%;
+    --primary-glow: 262 83% 75%;
 
     --secondary: 215 25% 15%;
     --secondary-foreground: 210 20% 95%;
@@ -115,10 +116,10 @@ All colors MUST be HSL.
 
     --border: 215 25% 20%;
     --input: 215 25% 20%;
-    --ring: 195 85% 55%;
+    --ring: 262 83% 68%;
 
     --gradient-primary: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary-glow)));
-    --gradient-hero: linear-gradient(135deg, hsl(195 85% 55%), hsl(160 70% 55%));
+    --gradient-hero: linear-gradient(135deg, hsl(262 83% 68%), hsl(160 70% 55%));
     --gradient-card: linear-gradient(145deg, hsl(215 25% 10%), hsl(215 25% 8%));
     
     --shadow-card: 0 4px 20px -2px hsl(0 0% 0% / 0.3);

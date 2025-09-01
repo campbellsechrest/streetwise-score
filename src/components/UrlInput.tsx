@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/components/ui/use-toast';
 import { PropertyData } from '@/utils/scoringAlgorithm';
@@ -81,23 +80,22 @@ export function UrlInput({ onDataExtracted, onToggleManual }: UrlInputProps) {
 
   return (
     <Card className="w-full max-w-2xl mx-auto">
-      <CardHeader>
-        <CardTitle className="text-2xl font-bold text-primary flex items-center gap-2">
+      <CardHeader className="text-center">
+        <CardTitle className="text-2xl font-bold text-primary flex items-center gap-2 justify-center">
           <Link className="h-6 w-6" />
-          Auto-Fill from StreetEasy
+          Evaluate a Listing
         </CardTitle>
         <p className="text-muted-foreground">
-          Paste a StreetEasy listing URL to automatically extract property details
+          Paste a StreetEasy listing URL or switch to manual entry.
         </p>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <Label htmlFor="streeteasy-url">StreetEasy Listing URL</Label>
             <Input
               id="streeteasy-url"
               type="url"
-              placeholder="https://streeteasy.com/building/..."
+              placeholder="https://streeteasy.com/building/41-5-avenue-new_york/1f"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               disabled={isLoading}
@@ -132,11 +130,7 @@ export function UrlInput({ onDataExtracted, onToggleManual }: UrlInputProps) {
           </div>
         </form>
 
-        <div className="mt-4 p-3 bg-secondary/20 rounded-lg">
-          <p className="text-sm text-muted-foreground">
-            <strong>Example URL:</strong> https://streeteasy.com/building/41-5-avenue-new_york/1f
-          </p>
-        </div>
+        {/* Example hint removed; using placeholder as ghost text */}
       </CardContent>
     </Card>
   );

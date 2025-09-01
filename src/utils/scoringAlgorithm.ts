@@ -27,6 +27,8 @@ export interface PropertyData {
   // Property specifics
   noiseLevel?: number; // 1-10, 1 being quiet
   petFriendly?: boolean;
+  catsAllowed?: boolean;
+  dogsAllowed?: boolean;
   
   // Market context
   daysOnMarket?: number;

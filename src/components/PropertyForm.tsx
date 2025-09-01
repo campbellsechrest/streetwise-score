@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -41,11 +41,12 @@ const PRICE_HISTORY = [
 interface PropertyFormProps {
   onSubmit: (property: PropertyData) => void;
   isLoading?: boolean;
+  initialData?: Partial<PropertyData> | null;
+  startManual?: boolean;
 }
 
-export function PropertyForm({ onSubmit, isLoading }: PropertyFormProps) {
-  const [showUrlInput, setShowUrlInput] = useState(true);
-  const [formData, setFormData] = useState<Partial<PropertyData>>({
+export function PropertyForm({ onSubmit, isLoading, initialData = null, startManual = false }: PropertyFormProps) {
+  const defaults: Partial<PropertyData> = {
     address: '',
     price: 0,
     monthlyFees: 0,
@@ -69,7 +70,18 @@ export function PropertyForm({ onSubmit, isLoading }: PropertyFormProps) {
     proximityToSubway: 3,
     daysOnMarket: 30,
     noiseLevel: 5
-  });
+  };
+
+  const [showUrlInput, setShowUrlInput] = useState(!(startManual || !!initialData));
+  const [formData, setFormData] = useState<Partial<PropertyData>>({ ...defaults, ...(initialData || {}) });
+
+  // React to prop changes for initial data (e.g., coming back from results)
+  useEffect(() => {
+    if (initialData) {
+      setFormData({ ...defaults, ...initialData });
+      setShowUrlInput(false);
+    }
+  }, [initialData]);
 
   const handleDataExtracted = (extractedData: PropertyData) => {
     setFormData(extractedData);

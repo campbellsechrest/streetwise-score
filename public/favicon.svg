@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Simple NYC taxi favicon: bold, readable at small sizes -->
+  <defs>
+    <linearGradient id="g" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#fde047"/>
+      <stop offset="1" stop-color="#facc15"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Car body -->
+  <path d="M18 26h12l2-4h10c2.2 0 4 1.8 4 4v2h2c3.3 0 6 2.7 6 6v7H6v-7c0-3.3 2.7-6 6-6h4v-1c0-0.6 0.4-1 1-1z" fill="url(#g)"/>
+
+  <!-- Windows -->
+  <rect x="23" y="26" width="16" height="6" rx="1.5" fill="#c7e4ff"/>
+
+  <!-- Taxi sign on roof -->
+  <rect x="28" y="22" width="8" height="3" rx="1" fill="#111827"/>
+
+  <!-- Checker stripe -->
+  <g fill="#111827">
+    <rect x="20" y="36" width="3" height="3"/>
+    <rect x="25" y="36" width="3" height="3"/>
+    <rect x="30" y="36" width="3" height="3"/>
+    <rect x="35" y="36" width="3" height="3"/>
+    <rect x="40" y="36" width="3" height="3"/>
+  </g>
+
+  <!-- Wheels -->
+  <circle cx="18" cy="45" r="5" fill="#111827"/>
+  <circle cx="46" cy="45" r="5" fill="#111827"/>
+  <circle cx="18" cy="45" r="2" fill="#9ca3af"/>
+  <circle cx="46" cy="45" r="2" fill="#9ca3af"/>
+
+  <!-- Ground shadow for a bit of depth -->
+  <ellipse cx="32" cy="52" rx="18" ry="2.5" fill="#000" opacity="0.08"/>
+</svg>
+

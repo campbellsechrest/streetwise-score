@@ -26,6 +26,8 @@ interface PropertyData {
   amenities: string[];
   homeFeatures: string[];
   petFriendly?: boolean;
+  catsAllowed?: boolean;
+  dogsAllowed?: boolean;
   walkScore?: number;
   transitScore?: number;
   bikeScore?: number;
@@ -419,6 +421,67 @@ async function extractPropertyData(html: string, url: string): Promise<PropertyD
   // Extract home features (unit-specific)
   const homeFeatures = extractHomeFeatures(html);
 
+  // Extract pet policy deterministically (unit first, then building page fallback)
+  let petPolicy = extractPetPolicy(html);
+  if (petPolicy.petFriendly === null) {
+    try {
+      // Derive building URL from unit URL
+      const buildingUrl = url.includes('/building/')
+        ? url.split('/').slice(0, 5).join('/')
+        : (() => {
+            const parts = url.split('/');
+            const slug = parts[4] || '';
+            return `https://streeteasy.com/building/${slug}`;
+          })();
+
+      let buildingHtml = '';
+      try {
+        const res = await fetch(buildingUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+          }
+        });
+        if (res.ok) {
+          buildingHtml = await res.text();
+        }
+      } catch (_e) {
+        // ignore direct fetch error; try Firecrawl if key present
+      }
+
+      if (!buildingHtml && FIRECRAWL_API_KEY) {
+        try {
+          const fc = await fetch('https://api.firecrawl.dev/v1/scrape', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${FIRECRAWL_API_KEY}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ url: buildingUrl, formats: ['html'] })
+          });
+          if (fc.ok) {
+            const j = await fc.json();
+            if (j?.success && j.data?.html) buildingHtml = j.data.html as string;
+          }
+        } catch (_e) {
+          // ignore
+        }
+      }
+
+      if (buildingHtml) {
+        const buildingPet = extractPetPolicy(buildingHtml);
+        if (buildingPet.petFriendly !== null) {
+          petPolicy = {
+            petFriendly: buildingPet.petFriendly,
+            catsAllowed: typeof buildingPet.catsAllowed === 'boolean' ? buildingPet.catsAllowed : petPolicy.catsAllowed,
+            dogsAllowed: typeof buildingPet.dogsAllowed === 'boolean' ? buildingPet.dogsAllowed : petPolicy.dogsAllowed,
+          };
+        }
+      }
+    } catch (_e) {
+      // If building lookup fails, keep unit-derived policy (null)
+    }
+  }
+
   // Determine school district based on neighborhood
   let schoolDistrict = 'Other';
   if (html.includes('Greenwich Village') || html.includes('Washington Square')) {
@@ -452,6 +515,9 @@ async function extractPropertyData(html: string, url: string): Promise<PropertyD
     daysOnMarket,
     amenities,
     homeFeatures,
+    ...(petPolicy.petFriendly !== null ? { petFriendly: petPolicy.petFriendly } : {}),
+    ...(typeof petPolicy.catsAllowed === 'boolean' ? { catsAllowed: petPolicy.catsAllowed } : {}),
+    ...(typeof petPolicy.dogsAllowed === 'boolean' ? { dogsAllowed: petPolicy.dogsAllowed } : {}),
     walkScore,
     transitScore,
     bikeScore
@@ -559,6 +625,70 @@ function extractAmenities(html: string): string[] {
 
   console.log(`Final extracted amenities: ${JSON.stringify(amenities)}`);
   return amenities;
+}
+
+// Deterministic pet policy extraction (unit page)
+function extractPetPolicy(html: string): { petFriendly: boolean | null; catsAllowed?: boolean; dogsAllowed?: boolean } {
+  try {
+    const lower = html.toLowerCase();
+    // Flags
+    let allowGeneric = false;
+    let denyGeneric = false;
+    let allowCats = false;
+    let allowDogs = false;
+    let denyCats = false;
+    let denyDogs = false;
+
+    // Deny patterns
+    const denyGenericPatterns = [
+      'no pets', 'pets not allowed', 'no animals', 'pets are not allowed'
+    ];
+    denyGeneric = denyGenericPatterns.some(p => lower.includes(p));
+
+    const denyCatPatterns = ['no cats', 'cats not allowed'];
+    denyCats = denyCatPatterns.some(p => lower.includes(p));
+
+    const denyDogPatterns = ['no dogs', 'dogs not allowed'];
+    denyDogs = denyDogPatterns.some(p => lower.includes(p));
+
+    if (denyGeneric) {
+      return { petFriendly: false, catsAllowed: false, dogsAllowed: false };
+    }
+
+    // Allow patterns
+    const allowGenericPatterns = [
+      'pet friendly', 'pet-friendly', 'pets allowed', 'pets are allowed', 'pets ok', 'pets welcome', 'pets permitted'
+    ];
+    allowGeneric = allowGenericPatterns.some(p => lower.includes(p));
+
+    const allowCatPatterns = ['cats allowed', 'cats ok', 'cats permitted'];
+    allowCats = allowCatPatterns.some(p => lower.includes(p));
+
+    const allowDogPatterns = ['dogs allowed', 'dogs ok', 'dogs permitted'];
+    allowDogs = allowDogPatterns.some(p => lower.includes(p));
+
+    // Only patterns
+    if (/cats only/.test(lower)) {
+      return { petFriendly: true, catsAllowed: true, dogsAllowed: false };
+    }
+    if (/dogs only/.test(lower)) {
+      return { petFriendly: true, catsAllowed: false, dogsAllowed: true };
+    }
+
+    // Synthesize result when species-specific allow/deny present
+    const catsAllowed = allowCats ? true : (denyCats ? false : undefined);
+    const dogsAllowed = allowDogs ? true : (denyDogs ? false : undefined);
+
+    if (allowGeneric || allowCats || allowDogs || denyCats || denyDogs) {
+      const inferredFriendly = allowGeneric || allowCats || allowDogs;
+      return { petFriendly: inferredFriendly ? true : null, catsAllowed, dogsAllowed };
+    }
+
+    // Unknown/unstated
+    return { petFriendly: null };
+  } catch (_e) {
+    return { petFriendly: null };
+  }
 }
 
 function getStandardAmenity(pattern: string): string | null {
@@ -985,7 +1115,16 @@ CRITICAL: Do not add amenities based on assumptions or inferences. Only include 
       daysOnMarket: Math.max(0, parseInt(propertyData.daysOnMarket) || baseline.daysOnMarket),
       amenities: mergeAmenitiesConservatively(baseline.amenities, propertyData.amenities || []),
       homeFeatures: mergeFeaturesConservatively(baseline.homeFeatures, propertyData.homeFeatures || []),
-      petFriendly: typeof propertyData.petFriendly === 'boolean' ? propertyData.petFriendly : false,
+      // Prefer deterministic pet policy when available; use AI only if unknown
+      petFriendly: (typeof baseline.petFriendly === 'boolean')
+        ? baseline.petFriendly
+        : (typeof propertyData.petFriendly === 'boolean' ? propertyData.petFriendly : undefined),
+      catsAllowed: (typeof baseline.catsAllowed === 'boolean')
+        ? baseline.catsAllowed
+        : (typeof propertyData.catsAllowed === 'boolean' ? propertyData.catsAllowed : undefined),
+      dogsAllowed: (typeof baseline.dogsAllowed === 'boolean')
+        ? baseline.dogsAllowed
+        : (typeof propertyData.dogsAllowed === 'boolean' ? propertyData.dogsAllowed : undefined),
       
       walkScore: Math.min(100, Math.max(0, parseInt(propertyData.walkScore) || baseline.walkScore)),
       transitScore: Math.min(100, Math.max(0, parseInt(propertyData.transitScore) || baseline.transitScore)),
