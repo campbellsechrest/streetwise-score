@@ -1,32 +1,33 @@
 name: Solo Release
 
 on:
-workflow_dispatch:
+  workflow_dispatch:
     inputs:
       bump:
         description: "Version bump (patch | minor | major)"
         required: false
         default: patch
-push:
+  push:
     branches:
       - main
     tags:
       - 'v*'
 
 permissions:
-contents: write
+  contents: write
 
 env:
-GH_TOKEN: ${{ secrets.GH_TOKEN }}
+  GH_TOKEN: ${{ secrets.GH_TOKEN }}
 
 jobs:
-autotag:
+  autotag:
     if: startsWith(github.ref, 'refs/heads/')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
       - name: Compute next version
         id: ver
         shell: bash
@@ -42,14 +43,15 @@ autotag:
             *)     PA=$((PA+1)) ;;
           esac
           NEXT="v${MA}.${MI}.${PA}"
-          echo "last=$LAST_TAG" >> $GITHUB_OUTPUT
-          echo "next=$NEXT" >> $GITHUB_OUTPUT
+          echo "last=$LAST_TAG" >> "$GITHUB_OUTPUT"
+          echo "next=$NEXT" >> "$GITHUB_OUTPUT"
+
       - name: Create and push tag
         run: |
           git tag -a "${{ steps.ver.outputs.next }}" -m "Release ${{ steps.ver.outputs.next }}"
           git push origin "${{ steps.ver.outputs.next }}"
 
-release:
+  release:
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
@@ -57,6 +59,7 @@ release:
         run: |
           sudo apt-get update
           sudo apt-get install -y gh
+
       - name: Create GitHub Release (auto notes)
         run: |
           gh release create "$GITHUB_REF_NAME" \
