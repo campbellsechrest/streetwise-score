@@ -1,5 +1,7 @@
 # Streetwise Score
 
+[![Live Demo](https://img.shields.io/badge/demo-online-brightgreen)](https://campbellsechrest.github.io/streetwise-score/)
+
 Intelligent StreetEasy property analysis and scoring. Paste a listing URL or enter details manually to get a transparent, factor‑by‑factor score with clear reasoning.
 
 Highlights
@@ -13,6 +15,9 @@ Tech Stack
 - Vite + React + TypeScript
 - Tailwind CSS + shadcn/ui
 - Supabase (Edge Function for scraping helpers)
+
+Live Demo
+- Try it now: https://campbellsechrest.github.io/streetwise-score/
 
 Getting Started
 - Requirements: Node 18+ and npm.
